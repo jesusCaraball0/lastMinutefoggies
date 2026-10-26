@@ -1,5 +1,45 @@
 # Fog of War Chess starter kit
 
+## Download public replays
+
+Run `python download_games.py` to save full completed-game replays under
+`game_data/<game-id>.json` when both teams' **current Elo is at least 1800**.
+The script snapshots the leaderboard once per run, matches teams by ID, and
+paginates through the entire completed-game listing. Games with missing team
+IDs or teams absent from the leaderboard cannot be classified and are counted
+as `unknownTeams`. Eligibility uses current ratings, not ratings at game time.
+
+Requests are sequential, with a shared cap of 9 public reads per second,
+including retries. Replay downloads use this rate; game-listing requests also
+have a separate cap of 1 per second for the stricter archive-search budget.
+Use `--interval` to increase the spacing for all requests or
+`--listing-interval` to increase the spacing between game-listing requests.
+Temporary failures use bounded exponential retries with jitter and respect
+`Retry-After`. Unavailable (404) replays are reported, and the script exits
+with status 1 if any qualifying replay is unavailable. Other permanent failures
+stop the download. Completed files survive interruptions; reruns skip valid
+saved replays and retry missing or malformed ones.
+
+Each game retains the complete API replay, including full boards, both players'
+observations, moves, clocks, results, and available rules/version metadata.
+`downloadMetadata` adds selection-time ratings, timestamps, and the game listing.
+Leaderboard, ID-to-Elo map, and last completed run summary are in
+`game_data/_metadata/`. Reruns fetch fresh ratings and retain previously saved
+games, even if those teams later fall below the threshold. Use a fresh output
+directory for a dataset containing only games eligible under a new snapshot.
+
+```sh
+python download_games.py
+python download_games.py --min-elo 1600 --interval 2 --output game_data_1600
+python replay.py game_data/<game-id>.json
+```
+
+Install dependencies with `python -m pip install -r requirements.txt`. The downloader
+shows a `tqdm` progress bar with games scanned, qualifying games, downloads, and
+previously saved files. The percentage and ETA refer to the full game scan.
+Downloaded JSON files are
+already excluded by this project's `.gitignore`.
+
 Choose a starter from `starters/`, edit it, and upload that folder as a ZIP.
 The kit includes Python, C++, Rust and CPU neural examples, plus a referee for
 local testing. Submit your bot's folder, not the entire kit.

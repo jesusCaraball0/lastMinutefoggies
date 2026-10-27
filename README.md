@@ -269,19 +269,81 @@ OOM message alone is not enough.
 Validation games do not count toward Elo. Timeouts and OOM in rated games are
 losses.
 
-## Neural starter
+## Neural policy: train, evaluate, and submit
 
-`starters/neural` demonstrates a feedforward policy, a recurrent policy and
-one-ply value search. Train on your own computer and submit the source and
-weights. If you do not supply trained weights, the build generates untrained
-weights so you can test loading and inference.
+Training code and dependencies live in `training/`. Edit the constants at the
+start of `training/train.py`, then run from the repository root:
 
-The build exports PyTorch weights to ONNX for fast startup within the
-15-second initialization limit. Its `build.sh` preserves a supplied `policy.pt`.
-The starter uses two intra-op threads and one inter-op thread for inference.
-Load the model once and keep it, along with any recurrent state, for the game.
-Use evaluation mode with gradients disabled. The preinstalled libraries do not
-count toward ZIP limits.
+```sh
+.venv/bin/python -m pip install -r training/requirements.txt
+.venv/bin/python training/train.py
+```
+
+Set `MODEL_TYPE = "feedforward"` for the original CNN or `"recurrent"` for the
+CNN → GRU → move policy in `starters/neural/model.py`. Both use the
+same entrypoint, training loop, evaluation metrics, and checkpoint saving.
+The trainer calls `create_policy` once. Each policy implements `make_loader`,
+`forward_chunk`, and `clip_gradients`, so the trainer needs no architecture
+branches or `training_setup` function. Both datasets provide the same batch/time
+layout. Dataset implementations stay in `training/datasets.py` and are imported
+by the model only when training data is requested.
+
+The recurrent model keeps a 256-dimensional memory. Its separate dataset in
+`training/datasets.py` builds an ordered trajectory for each player in
+each game, including observations from opponent turns. Only the player's own
+moves have labels; opponent turns and batch padding are excluded from the loss.
+Memory starts at zero per player-game and carries between chunks, with gradients
+truncated every `SEQUENCE_LENGTH` observations (default 16). Set
+`SEQUENCE_BATCH_SIZE` for recurrent batches; `BATCH_SIZE` controls feedforward
+batches. Validation follows the same sequence order and memory updates.
+
+The trainer uses both players' moves from all completed wins, losses, and draws.
+Each input is the moving player's observation **before** the recorded move;
+it never uses the full board. The selected policy predicts 4,096 from/to
+classes using cross-entropy loss. Promotion types share a class. White and Black
+retain their absolute coordinates and piece colors. The 10% validation split
+holds out whole games, using a fixed seed. Every epoch shows training and eval
+progress bars, then prints loss and top-1/top-5 move accuracy. These accuracies
+are measured before legal-move filtering. Training selects CUDA, MPS, or CPU
+automatically; set `DEVICE` to override.
+
+The best validation-loss checkpoint is written atomically to
+`starters/neural/policy.pt`. Existing weights are protected from accidental
+replacement at the start of a new run; change `OUTPUT` for another experiment.
+The architecture and encoding in `starters/neural/model.py` are shared with the
+trainer, preserving compatibility with checkpoints from the original trainer.
+
+Evaluate the saved model against the capture-preferring baseline:
+
+```sh
+.venv/bin/python evaluate.py
+```
+
+`evaluate.py` uses the actual neural deliverable, copies its checkpoint once,
+and plays 20 games, alternating colors (10 White, 10 Black), at 180+2 with a
+1,000-ply limit. Paired games use the same baseline seed. Training may continue
+while the evaluation uses its fixed copy of the weights. Edit the constants at
+the top of `evaluate.py` to test another checkpoint or change match settings.
+
+The terminal reports each game and running wins/losses/draws, then overall and
+per-color results, win rate, score rate (a draw counts as half a point), average
+and min/max game length in plies, bot failures, wall time, and termination reasons.
+Replays and a summary including the checkpoint SHA256 are saved under
+`evaluation_results/<timestamp>/`. Match results measure playing strength;
+move prediction accuracy measures imitation.
+
+The deliverable is the `starters/neural/` folder with its trained `policy.pt`.
+`bot.py` loads those exact weights with PyTorch on CPU, then chooses the
+highest-scoring legal move from its observation. `moves.py` tracks castling
+rights and en passant from consecutive observations. Promotions choose a queen.
+The checkpoint's `kind` selects the model automatically. A recurrent bot updates
+its memory once per received observation and reuses those logits on the clock
+prompt; each new game starts with zero memory. Neither policy uses value search.
+`build.sh` validates the supplied
+checkpoint and never creates random replacement weights. `run.sh` starts the
+same bot used by the evaluator. ZIP the contents of `starters/neural/` for
+submission; no ONNX export or extra build dependencies are required. Model
+initialization must still complete within the arena's 15-second allowance.
 
 ## Debug output and private logs
 

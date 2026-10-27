@@ -1,3 +1,4 @@
 #!/bin/bash
 set -eu
-python3 model.py
+cd "$(dirname "$0")"
+python3 -c 'from bot import load_policy; load_policy(); print("Validated trained policy.pt")'

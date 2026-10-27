@@ -1,33 +1,42 @@
-# CPU neural starter
+# Trained neural policy deliverable
 
-Train on your own computer and include `policy.pt` with your source.
-`build.sh` preserves supplied weights. If they are missing, it creates
-deterministic **untrained** weights so you can test the build and protocol.
-The starter includes a move generator and local referee.
-The checkpoint is a dictionary containing `kind` and `state_dict` for `Policy`.
-Load it with `torch.load(..., map_location='cpu', weights_only=True)`.
+This folder is the self-contained submission used by the top-level evaluator.
+Include the trained `policy.pt` and ZIP this folder's contents for the arena.
 
-The example provides a feedforward CNN, CNN/GRU (`python3 model.py --kind recurrent`),
-and policy/value CNN with one-ply search (`--kind search`). Remove the example
-checkpoint before generating another architecture. Search evaluates at most 64
-hypothetical post-move observations in batches of eight. It uses only the bot's
-observations, without reconstructing hidden pieces. The move generator omits
-en passant; you can add it by tracking consecutive observations.
+From the repository root, install and train:
 
-Read `fow` and the color/time-control line, initialize, then write `ready`
-followed by a newline and flush `stdout` within 15 seconds. No observations
-arrive until both bots are ready. Then respond only to clock prompts.
-Initialization happens once per game; the model and recurrent state stay in
-memory between turns.
+```sh
+.venv/bin/python -m pip install -r training/requirements.txt
+.venv/bin/python training/train.py
+.venv/bin/python evaluate.py
+```
 
-The build loads the supplied PyTorch checkpoint (or generates untrained example
-weights), exports `policy.onnx`, and writes model metadata to `policy.json`.
-The persistent game bot loads that graph using ONNX Runtime's CPU provider,
-with two intra-op threads and one inter-op thread. Using ONNX for play avoids
-loading PyTorch within the 15-second initialization limit.
+Training saves the best checkpoint here. Constants in `training/train.py`
+control training; constants in `evaluate.py` control the 20-game baseline test.
+There is no command-line argument parser in either script.
 
-For trusted local testing, install CPU PyTorch, ONNX 1.20.1, ONNX Runtime 1.24.2,
-and the kit's `requirements.txt`, then run `bash build.sh` in this folder.
-The course runtime already includes these libraries. Do not include your local
-virtual environment in the ZIP. See the kit's main guide for local referee
-commands and the full protocol.
+Set `MODEL_TYPE` to `"feedforward"` or `"recurrent"` in the same trainer. Both models are defined in `model.py`. For the recurrent policy, a CNN encodes each
+observation, a GRU maintains a 256-dimensional memory, and a linear head scores
+moves. Ordered player-game sequences come from `training/datasets.py`.
+The shared training loop carries memory across truncated chunks and ignores
+opponent-turn and padding labels. Choose a different `OUTPUT` to preserve an
+existing checkpoint, and set the evaluator's `MODEL_PATH` to test that file.
+
+`bot.py` implements the arena's persistent stdin/stdout protocol. It loads
+`policy.pt` relative to its own file, uses PyTorch CPU inference, and preserves
+the observation tracker between moves. It processes every observation but
+outputs a move only after the clock prompt. All stdout is reserved for the
+protocol. Legal candidates include castling and en passant; promotion chooses
+a queen. The policy sees only the player's fog observation. The unused value
+head remains in `model.py` for compatibility with existing training checkpoints.
+
+`build.sh` checks that the supplied checkpoint loads. `run.sh` launches the bot.
+The interface selects feedforward or recurrent inference from the checkpoint's
+`kind` field. Recurrent memory updates once per observation, including opponent
+turns, and resets for each new game. There is no ONNX export,
+search, or random fallback weights. Initialization must fit the 15-second arena
+limit. PyTorch and python-chess are provided by the course runtime.
+
+The evaluator runs a copy of this deliverable and freezes its weights for the
+whole series. It saves replays and prints W/L/D, results by color, score rate,
+game lengths, failures, and timing. See the root README for details.

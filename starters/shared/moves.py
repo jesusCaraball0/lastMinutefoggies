@@ -1,4 +1,4 @@
-"""Observation-based move generation, including castling and en passant."""
+"""Observation-based move generation with visible king-safety filtering."""
 from __future__ import annotations
 
 import chess
@@ -56,9 +56,38 @@ def infer_en_passant(previous: str | None, current: str, side: chess.Color):
     return possible[0] if possible else None
 
 
+def visibly_attacked(board: FowBoard, square: int, enemy: chess.Color, view: str):
+    """Unknown squares cannot establish a clear line from a visible slider."""
+    for attacker in board.attackers(enemy, square):
+        if not any(view[between] == "?" for between in
+                   chess.SquareSet(chess.between(attacker, square))):
+            return True
+    return False
+
+
+def king_safe_moves(board: FowBoard, moves: list[chess.Move], view: str):
+    """Prefer moves that leave the king unattacked by known enemy pieces.
+
+    This uses only the observation. Unknown attackers/blockers remain uncertain.
+    If every candidate is visibly unsafe, retain the original moves so the bot
+    still submits a legal move rather than exiting the protocol.
+    """
+    side = board.turn
+    safe = []
+    for move in moves:
+        board.push(move)
+        try:
+            king = board.king(side)
+            if king is not None and not visibly_attacked(board, king, not side, view):
+                safe.append(move)
+        finally:
+            board.pop()
+    return safe or moves
+
+
 def candidates(current: str, side: chess.Color, rights: int,
-               previous: str | None = None):
-    """Return a board containing visible pieces only and the exact legal moves.
+               previous: str | None = None, *, apply_king_safety=True):
+    """Return a visible board and legal candidates filtered for king safety.
 
     Empty unseen squares in the temporary board are placeholders. A move may
     never land on or slide through an unseen square; the explicit mask checks
@@ -91,7 +120,7 @@ def candidates(current: str, side: chess.Color, rights: int,
             if any(current[chess.square(file, rank)] != "-" for file in files):
                 continue
         moves.append(move)
-    return board, moves
+    return board, king_safe_moves(board, moves, current) if apply_king_safety else moves
 
 
 class ObservationTracker:

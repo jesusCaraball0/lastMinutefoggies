@@ -271,22 +271,29 @@ losses.
 
 ## Neural policy: train, evaluate, and submit
 
-Training code and dependencies live in `training/`. Edit the constants at the
-start of `training/train.py`, then run from the repository root:
+Training code and dependencies live in `training/`. Run from the repository
+root; command-line options override the defaults shown by `training/train.py`:
 
 ```sh
 .venv/bin/python -m pip install -r training/requirements.txt
 .venv/bin/python training/train.py
 ```
 
-Set `MODEL_TYPE = "feedforward"` for the original CNN or `"recurrent"` for the
-CNN → GRU → move policy in `starters/neural/model.py`. Both use the
-same entrypoint, training loop, evaluation metrics, and checkpoint saving.
-The trainer calls `create_policy` once. Each policy implements `make_loader`,
-`forward_chunk`, and `clip_gradients`, so the trainer needs no architecture
-branches or `training_setup` function. Both datasets provide the same batch/time
-layout. Dataset implementations stay in `training/datasets.py` and are imported
-by the model only when training data is requested.
+The default is the full feedforward CNN: 64 channels, 256 features, ReLU,
+BatchNorm after each convolution, default initialization, and global L2 gradient
+clipping at 5. AdamW uses betas (0.9, 0.99), epsilon 1e-8, and weight decay 0.01.
+Eight epochs use batches of 128. LR warms from 1e-4 to 1e-3 over 5,820 updates,
+then cosine-decays to 1e-5 across the remaining updates. The total update budget
+is derived from the dataset and printed and saved before training starts.
+All training games in the fixed 90/10 game split are used. Raw validation covers
+the whole validation split; legal-action diagnostics use 8,192 held-out moves
+by default (`--probe-max-positions 0` evaluates all validation moves).
+
+Use `--model-type recurrent --no-batch-norm --schedule none --grad-clip-norm 1`
+for the CNN → GRU model with its original clipping threshold. Both architectures
+use shared models, observation encoding, metrics, and checkpoint loading.
+See [training/CLUSTER.md](training/CLUSTER.md) for ORCD setup, the included
+six-hour Slurm job, monitoring, resume, and result download commands.
 
 The recurrent model keeps a 256-dimensional memory. Its separate dataset in
 `training/datasets.py` builds an ordered trajectory for each player in
@@ -307,43 +314,337 @@ progress bars, then prints loss and top-1/top-5 move accuracy. These accuracies
 are measured before legal-move filtering. Training selects CUDA, MPS, or CPU
 automatically; set `DEVICE` to override.
 
-The best validation-loss checkpoint is written atomically to
-`starters/neural/policy.pt`. Existing weights are protected from accidental
-replacement at the start of a new run; change `OUTPUT` for another experiment.
-The architecture and encoding in `starters/neural/model.py` are shared with the
-trainer, preserving compatibility with checkpoints from the original trainer.
+Use `--activation leaky_relu --negative-slope 0.01` to compare activations.
+Activation settings and BatchNorm architecture are stored in checkpoints and
+honored by inference. Historical checkpoints without those fields retain their
+original architecture and ReLU activation.
 
-Evaluate the saved model against the capture-preferring baseline:
+For the long-update stability ablations (baseline, no decay on normalization/bias,
+fixed BatchNorm affine parameters, and BatchNorm after the dense layer):
 
 ```sh
-.venv/bin/python evaluate.py
+.venv/bin/python training/stability_experiment.py
 ```
 
-`evaluate.py` uses the actual neural deliverable, copies its checkpoint once,
-and plays 20 games, alternating colors (10 White, 10 Black), at 180+2 with a
-1,000-ply limit. Paired games use the same baseline seed. Training may continue
-while the evaluation uses its fixed copy of the weights. Edit the constants at
-the top of `evaluate.py` to test another checkpoint or change match settings.
+This runs four processes with one Torch thread each. All cases use the same
+2,560 training games, 64 validation games, seed 7980, shuffled full batches of 128,
+and a 16-channel / 64-feature CNN. AdamW settings and global clipping at 5 match
+the cluster run. The LR follows the **first 80,000 updates of the cluster's
+334,440-update schedule**, with 5,820 warmup updates. Checkpoints are saved at
+5k, 20k, 40k, and 80k. The LR is intentionally not forced to its minimum when
+the stress test stops. `--parallel`, `--threads`, `--checkpoints`, and network/data
+size arguments allow adjusting the workload.
 
-The terminal reports each game and running wins/losses/draws, then overall and
-per-color results, win rate, score rate (a draw counts as half a point), average
-and min/max game length in plies, bot failures, wall time, and termination reasons.
-Replays and a summary including the checkpoint SHA256 are saved under
-`evaluation_results/<timestamp>/`. Match results measure playing strength;
-move prediction accuracy measures imitation.
+This repeats a smaller dataset much more often than the full-data run; treat
+validation loss as an ablation comparison, not a full-scale performance forecast.
+A baseline that does not reproduce the instability cannot establish its fix.
+Activation diagnostics use a fixed random sample of 512 held-out observations.
+Checkpoints record weight-decay groups, BN scales, feature concentration, actual
+updates, and batch-stream hashes. Final legal-action metrics cover the entire
+held-out split. Results and comparison plots are saved under
+`out/stability-experiments/<timestamp>/`; production defaults stay unchanged.
 
-The deliverable is the `starters/neural/` folder with its trained `policy.pt`.
-`bot.py` loads those exact weights with PyTorch on CPU, then chooses the
-highest-scoring legal move from its observation. `moves.py` tracks castling
-rights and en passant from consecutive observations. Promotions choose a queen.
-The checkpoint's `kind` selects the model automatically. A recurrent bot updates
-its memory once per received observation and reuses those logits on the clock
-prompt; each new game starts with zero memory. Neither policy uses value search.
-`build.sh` validates the supplied
-checkpoint and never creates random replacement weights. `run.sh` starts the
-same bot used by the evaluator. ZIP the contents of `starters/neural/` for
-submission; no ONNX export or extra build dependencies are required. Model
-initialization must still complete within the arena's 15-second allowance.
+For the matched dropout comparison (baseline, dense dropout 0.1 and 0.2, and
+dense BatchNorm plus dropout 0.1), use the same recipe and optionally reuse the
+exact cached split from a previous round:
+
+```sh
+.venv/bin/python training/stability_experiment.py --suite dropout \
+  --reuse-data out/stability-experiments/20261103T221924-729044Z \
+  --out-dir out/dropout-experiments
+```
+
+Dropout follows the hidden dense ReLU, is disabled for validation/inference, and
+its probability is saved in `model_config`. Model defaults retain zero dropout.
+
+For the architecture comparison (dropout-0.1 reference, three residual blocks,
+and a 1x1 convolution reducing trunk channels to one quarter before flattening):
+
+```sh
+.venv/bin/python training/stability_experiment.py --suite architecture \
+  --reuse-data out/dropout-experiments/20261104T002130-541749Z \
+  --reference-run out/dropout-experiments/20261104T002130-541749Z \
+  --parallel 2 --out-dir out/architecture-experiments
+```
+
+The reference case is copied from the completed matching run; only the two new
+architectures train. The residual variant uses a stem and three post-activation
+blocks (seven 3x3 convolutions total). It retains the dense head and dropout 0.1.
+The reduced-head variant retains the two-convolution trunk and adds a 1x1
+convolution plus ReLU before flattening; it keeps the hidden width and dropout.
+New architecture fields are saved in checkpoints. Existing model defaults and
+historical checkpoints retain their original topology. Data hashes and complete
+learning-rate traces must match before the comparison is marked complete.
+
+For the residual LR-decay follow-up on the exact same cached dataset:
+
+```sh
+.venv/bin/python training/residual_decay_experiment.py
+```
+
+This changes only the cosine horizon to 80,000 updates (same 5,820-step warmup),
+evaluates the entire validation split every 5,000 updates, and preserves the
+training RNG stream across the added evaluations. It saves separate best
+checkpoints for raw NLL, legal NLL, legal accuracy, and raw accuracy. Results go to
+`out/residual-decay-experiments/<timestamp>/`, and a comparison is appended to the
+reference architecture experiment's `report.md`. The reference and output root
+can be selected with `--reference-run` and `--out-dir`.
+
+A small local pilot compares both model types, ReLU versus LeakyReLU, and two
+training-set sizes. Run from the repository root:
+
+```sh
+.venv/bin/python training/experiment.py
+```
+
+Defaults: 32 and 128 training games, a fixed 16-game validation set, 8 convolution
+channels, a 32-dimensional feature/memory vector, 8 epochs, and four CPU threads.
+The full model remains 64 channels and 256 features. The pilot runs eight cases
+under `out/experiments/<timestamp>/`, with `experiment.json`, `comparison.png`,
+and per-case logs, checkpoints, metrics, and plots. Existing bot checkpoints are
+not replaced. Every case records the actual train/validation file list, seed,
+parameter count, optimizer-step count, and separate training/diagnostics timing.
+
+For a larger follow-up pilot:
+
+```sh
+.venv/bin/python training/experiment.py --train-games 128 512 --epochs 12
+```
+
+Use `--models recurrent` or `--activations leaky_relu` to restrict cases;
+`--channels`, `--hidden-size`, `--learning-rate`, `--seed`, and `--device` are
+also configurable. Within a model type, cases use identical initial weights,
+nested seeded training subsets, and the same disjoint validation games. These
+short one-seed runs measure early behavior; they do not establish full-scale
+convergence, playing strength, or GPU throughput.
+
+For a controlled comparison of CNN size, run:
+
+```sh
+.venv/bin/python training/size_experiment.py
+```
+
+This uses one seed (7980), 512 training games, 64 fixed validation games, ReLU,
+Adam at 0.001, and batches of 128. It compares 8 channels / 32 features against
+64 channels / 256 features at exactly 200, 1,000, and 2,000 optimizer updates.
+Both models see identical shuffled full batches; SHA-256 hashes verify the
+cumulative input streams at each checkpoint. Training metrics average over each
+interval between checkpoints; validation metrics describe the checkpoint itself.
+Runs use CPU with four threads and save under `out/size-experiments/<timestamp>/`.
+Each contains a shared data manifest, `experiment.json`, `comparison.png`, and
+per-model metrics, checkpoints, plots, initial activation statistics, and final
+histograms. Existing bot checkpoints are not overwritten. Optional arguments
+include `--checkpoints 200 1000 2000`, `--train-games 512`, `--val-games 64`, and
+`--threads 4`. A single seed gives a diagnostic comparison, not an estimate of
+variation across training seeds.
+
+To repeat the size comparison with AdamW and weight decay 0.01:
+
+```sh
+.venv/bin/python training/size_experiment.py --optimizer adamw --weight-decay 0.01
+```
+
+For AdamW with learning rate 1e-4 and betas (0.9, 0.99):
+
+```sh
+.venv/bin/python training/size_experiment.py --optimizer adamw \
+  --learning-rate 1e-4 --beta-1 0.9 --beta-2 0.99 \
+  --weight-decay 0.01 --eps 1e-8
+```
+
+For only the small CNN, with three epochs of linear warmup from 1e-4 to 1e-3,
+then five epochs of cosine decay to 1e-5:
+
+```sh
+.venv/bin/python training/size_experiment.py --sizes small --optimizer adamw \
+  --learning-rate 1e-4 --beta-1 0.9 --beta-2 0.99 \
+  --weight-decay 0.01 --eps 1e-8 \
+  --warmup-epochs 3 --decay-epochs 5 --peak-lr 1e-3 --end-lr 1e-5
+```
+
+Use `--sizes medium --train-games 2560` with the same optimizer and schedule
+arguments to train the medium CNN (32 channels / 128 features) on 2,560 games.
+The small CNN has 8 channels / 32 features; original has 64 / 256.
+
+Add `--conv-init he_normal` to initialize only Conv2d weights with He normal
+(`fan_in`, ReLU gain). Biases and linear layers keep their original initialization.
+The default remains unchanged. Initialization choice is recorded in settings,
+per-model metrics, and checkpoints.
+
+Add `--batch-norm` for `Conv2d → BatchNorm2d → ReLU` in both convolution blocks.
+It defaults off, keeps existing convolution/ReLU names and weight initialization,
+and records the architecture choice in checkpoint `model_config`. Validation and
+bot inference use saved running statistics in eval mode.
+
+For a larger dataset with a fixed schedule in optimizer updates, use
+`--warmup-updates 5820 --decay-updates 9700` instead of `--warmup-epochs`.
+Also supply `--checkpoints 1940 3880 5820 7760 9700 11640 13580 15520`.
+The last checkpoint must equal the sum of warmup and decay updates. This keeps
+the LR trajectory and training budget fixed when changing the number of games.
+
+Scheduled runs evaluate and save checkpoints after every epoch, overriding
+`--checkpoints`. An epoch is one shuffled pass through all full training batches;
+the final incomplete batch is dropped. LR changes after each optimizer update,
+and the actual LR used for every update is saved and plotted. Checkpoints also
+include optimizer and scheduler state.
+
+The original command continues to use Adam with zero weight decay. Optimizer and
+weight decay are recorded in the experiment settings and checkpoints.
+
+Channel, sparsity, and memory-saturation plots are no longer generated. The JSON
+retains activation statistics, and `dormant_features.png` tracks inactive
+features throughout training.
+
+Every new training run creates `out/<UTC-timestamp>-<model-type>/`:
+
+- `metrics.json`: configuration and per-epoch loss, accuracy, learning rates,
+  layer/global gradient L2 statistics, clipping frequency, and validation
+  activation statistics. Written atomically after every epoch.
+- `loss.png`, `learning_rate.png`, `gradient_l2.png`: epoch curves.
+- `gradient_quantiles.png`: layer gradient medians, p95s, and maxima before clipping.
+- `gradient_global_l2.png`: mean/median/p95/max global norms before/after clipping,
+  and the fraction of optimizer updates actually clipped.
+- `histograms.json`, `weights/*.png`, `activations/*.png`: final-epoch weight
+  distributions and validation activation histograms, with raw histogram bins.
+- `best_policy.pt`, `final_policy.pt`: best-validation and final-epoch checkpoints,
+  including activation settings, epoch, configuration, and diagnostics metadata.
+
+Gradient L2 combines a layer's direct weight and bias gradients. Mean, median,
+p95, maximum, step count, and nonfinite count are stored before and after clipping.
+The same statistics are logged for the global norm. Clipping frequency measures
+actual global rescaling by comparing each step's pre/post norms; layers without
+any gradient (e.g. the unused feedforward value head) are `null` rather than zero.
+Norms are buffered on the training device and summarized once per epoch.
+
+Additional diagnostics are saved each epoch:
+
+- `update_to_weight.png`: actual Adam parameter changes divided by pre-update
+  parameter L2, per layer (including bias), with median/p95. JSON also records
+  absolute update and parameter norms. Sampling is every 100 optimizer steps
+  by default, every 10 in the pilot; the first step of each epoch is sampled.
+- `dormant_features.png`: fraction of channels with mean absolute activation
+  at most 0.01 times their layer's average. Per-channel mean-absolute activity,
+  normalized activity scores, and variation of channel means across observations
+  are included in the activation statistics. Low activity is not the same as
+  never-positive output; a useful LeakyReLU channel may stay negative.
+- `legal_policy.png`: raw probability mass on game-legal actions, raw versus
+  legal-masked NLL/accuracy, and safety-heuristic intervention rates. The masks
+  are built once from fixed held-out replay observations and known castling/EP
+  history, without reading hidden board fields. The recorded move must belong
+  to the game-legal mask, but may be rejected by the safety heuristic; these
+  masks are kept separate. Diagnostic probabilities use temperature 1.
+- `memory_usefulness.png`: recurrent NLL with normal history versus resetting
+  hidden state on every observation; positive reset-minus-normal NLL means
+  history improves predictions on this probe sample.
+- `gradient_by_lag.png`: gradient L2 of a supervised endpoint loss with respect
+  to hidden states at preceding lags, inside the truncated window. A no-grad
+  prefix initializes history before that window; diagnostics do not accumulate
+  parameter gradients. The probe is bounded to two trajectories per epoch.
+
+`PROBE_MAX_POSITIONS`, `PROBE_GRADIENT_TRAJECTORIES`, and `UPDATE_SAMPLE_EVERY`
+control overhead. Training and diagnostics durations are reported separately.
+Small models save their channel/hidden dimensions in checkpoint metadata, so
+bots can load them alongside the original full-size checkpoints.
+
+Validation activation diagnostics use the first 512 nonpadding observations,
+preserving recurrent memory. Exact reductions across **all** values in those
+observations record mean/std, zero/near-zero (absolute value <= 1e-6), negative,
+and positive fractions, plus all-zero and never-positive channel fractions.
+Per-channel values are retained for layers with up to 256 channels/features;
+large flattened/logit layers retain aggregate statistics. "All-zero" or
+"never-positive" describes this validation sample, not a permanently dead unit.
+
+Histograms use uniform random reservoirs of up to 50,000 values per layer,
+independent of training RNG; exact activation statistics do not depend on the
+histogram sample. Weight histograms include weights, excluding biases. Sample
+limits and bin counts are configurable in `training/train.py`. Final histograms
+describe the final epoch, which may differ from the best one.
+
+Every new run saves `best_policy.pt`, `last_policy.pt`, and `final_policy.pt`
+in its own output directory; existing bot weights are not replaced. Optionally
+export the best policy with `--output /path/to/a/new/policy.pt`. Existing export
+files and run directories are protected from accidental replacement.
+
+`--resume /path/to/run/last_policy.pt` restores the last completed epoch,
+including model/BatchNorm buffers, AdamW moments, scheduler position, RNG state,
+and training shuffle-generator state. An interrupted partial epoch is replayed.
+Resume preserves the saved training configuration and data split. Checkpoints
+and JSON records are written atomically. Validation and diagnostic timings are
+reported separately. The architecture and encoding remain shared with inference.
+
+Evaluate any two bot directories (or starter names):
+
+```sh
+.venv/bin/python evaluate.py neural neural_recurrent
+# Equivalent: .venv/bin/python evaluate.py starters/neural starters/neural_recurrent
+```
+
+`evaluate.py` launches each bot's `run.sh` from an independent snapshot and
+freezes both checkpoints before the series. It defaults to 20 games, alternating
+colors (10 White and 10 Black for each bot), at 180+2 with a 1,000-ply limit.
+Use `--games`, `--base-time`, `--increment`, and `--max-plies` to change those
+settings. `--games` must be positive and even. For a short launch check:
+
+```sh
+.venv/bin/python evaluate.py neural neural_recurrent --games 2 --max-plies 20
+```
+
+The first bot is A; wins, losses, per-color results, win rate, and score rate
+(a draw counts as half a point) are reported from A's perspective. Reports also
+include game lengths, failures for each bot, wall time, and termination reasons.
+Replays and `summary.json`, including both bot paths and checkpoint SHA256 hashes,
+are saved under `evaluation_results/<timestamp>/`. Override the parent directory
+with `--results-dir`. Future PPO bots can use the same evaluator by exposing
+`run.sh` and keeping their checkpoint and inference dependencies in their folder
+or the shared runtime. Match results measure playing strength; move prediction
+accuracy measures imitation.
+
+The bots have separate folders and checkpoints:
+
+```text
+starters/
+  neural/             # feedforward bot and policy.pt
+  neural_recurrent/   # recurrent bot and policy.pt
+  shared/             # models, inference, move tracking, submission bundling
+```
+
+Each bot's `bot.py` loads its own `policy.pt`; the checkpoint's `kind` selects
+the architecture. Shared inference runs on CPU and samples legal moves from
+`softmax(logits / 0.9)`. Each game uses fresh randomness.
+Before sampling, the observation move generator filters moves that leave the
+king attacked by a visible enemy piece along a known clear path. Hidden threats
+remain uncertain; if every candidate is unsafe, it retains the legal moves
+as a fallback. Move tracking supports castling and en passant; promotion chooses
+a queen. A recurrent bot updates memory once per observation, including opponent
+turns, and starts each game with zero memory. Neither policy uses value search.
+
+All bots expose the same `run.sh` interface, so future PPO bots can play any
+existing bot through the referee. Activate the virtual environment before using
+the launch scripts:
+
+```sh
+source .venv/bin/activate
+python referee.py --trusted-local \
+  --white 'bash starters/neural/run.sh' \
+  --black 'bash starters/neural_recurrent/run.sh' \
+  --white-name neural --black-name neural_recurrent \
+  --base-time 180 --increment 2 --max-plies 1000 \
+  --output neural-vs-recurrent.json
+python replay.py neural-vs-recurrent.json --delay 0.3
+```
+
+For arena submission, bundle a bot with the shared code into a fresh directory:
+
+```sh
+.venv/bin/python starters/shared/bundle.py starters/neural --output build/neural
+# Or: starters/neural_recurrent --output build/neural_recurrent
+```
+
+ZIP the contents of the generated directory. Its `build.sh` validates the
+checkpoint and its `run.sh` launches the same bot used locally and by the
+evaluator. The bundle includes shared code and weights, so it works outside the
+repository. Initialization must fit the arena's 15-second allowance; PyTorch and
+python-chess are supplied by the course runtime. No ONNX export is required.
 
 ## Debug output and private logs
 

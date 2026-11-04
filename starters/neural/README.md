@@ -1,42 +1,39 @@
-# Trained neural policy deliverable
+# Feedforward neural bot
 
-This folder is the self-contained submission used by the top-level evaluator.
-Include the trained `policy.pt` and ZIP this folder's contents for the arena.
+This bot owns its `policy.pt` and uses the model definitions, observation tracker,
+and arena protocol implementation in `starters/shared/`.
 
-From the repository root, install and train:
+From the repository root:
 
 ```sh
-.venv/bin/python -m pip install -r training/requirements.txt
-.venv/bin/python training/train.py
-.venv/bin/python evaluate.py
+.venv/bin/python starters/neural/bot.py
 ```
 
-Training saves the best checkpoint here. Constants in `training/train.py`
-control training; constants in `evaluate.py` control the 20-game baseline test.
-There is no command-line argument parser in either script.
+For matches, use `bash starters/neural/run.sh` as a referee bot command.
+Activate `.venv` first so `run.sh` and `build.sh` use the installed dependencies.
+`build.sh` validates the checkpoint. The bot uses CPU inference, samples legal moves
+from `softmax(logits / 0.9)`, and chooses queen promotions. Recurrent memory
+updates once per observation and resets each game.
 
-Set `MODEL_TYPE` to `"feedforward"` or `"recurrent"` in the same trainer. Both models are defined in `model.py`. For the recurrent policy, a CNN encodes each
-observation, a GRU maintains a 256-dimensional memory, and a linear head scores
-moves. Ordered player-game sequences come from `training/datasets.py`.
-The shared training loop carries memory across truncated chunks and ignores
-opponent-turn and padding labels. Choose a different `OUTPUT` to preserve an
-existing checkpoint, and set the evaluator's `MODEL_PATH` to test that file.
+Train with `python training/train.py --model-type feedforward`.
+The run saves its own best and final checkpoints under `out/`; it does not
+replace this bot's weights. Use `--output` with a fresh checkpoint path for an
+additional export. See `training/CLUSTER.md` for GPU cluster instructions.
+To evaluate against the other CNN bot, run:
 
-`bot.py` implements the arena's persistent stdin/stdout protocol. It loads
-`policy.pt` relative to its own file, uses PyTorch CPU inference, and preserves
-the observation tracker between moves. It processes every observation but
-outputs a move only after the clock prompt. All stdout is reserved for the
-protocol. Legal candidates include castling and en passant; promotion chooses
-a queen. The policy sees only the player's fog observation. The unused value
-head remains in `model.py` for compatibility with existing training checkpoints.
+```sh
+.venv/bin/python evaluate.py neural neural_recurrent
+```
 
-`build.sh` checks that the supplied checkpoint loads. `run.sh` launches the bot.
-The interface selects feedforward or recurrent inference from the checkpoint's
-`kind` field. Recurrent memory updates once per observation, including opponent
-turns, and resets for each new game. There is no ONNX export,
-search, or random fallback weights. Initialization must fit the 15-second arena
-limit. PyTorch and python-chess are provided by the course runtime.
+The evaluator plays 20 games, alternating colors, and reports results from the
+first bot's perspective. Both checkpoints are frozen for the series.
 
-The evaluator runs a copy of this deliverable and freezes its weights for the
-whole series. It saves replays and prints W/L/D, results by color, score rate,
-game lengths, failures, and timing. See the root README for details.
+Create a standalone arena submission with shared code included:
+
+```sh
+.venv/bin/python starters/shared/bundle.py starters/neural --output build/neural
+```
+
+Use a fresh output directory. ZIP the contents of `build/neural/` for submission.
+The bundled `build.sh` and `run.sh` work without the repository. PyTorch and
+python-chess must be available in the runtime; initialization must fit 15 seconds.

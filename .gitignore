@@ -1,8 +1,11 @@
 *.json
-.venv
+.venv*/
 __pycache__/
 *.py[cod]
 game_data
 *.pt
 *.onnx
 evaluation_results/
+build/
+out/
+logs/

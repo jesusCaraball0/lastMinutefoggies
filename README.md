@@ -1,5 +1,7 @@
 # Fog of War Chess starter kit
 
+Experimental findings, chronological results, and evidence are maintained only in [EXPERIMENT_HISTORY.md](EXPERIMENT_HISTORY.md). Saved artifacts live under `out/experiments/` with descriptive names. This README documents usage.
+
 ## Download public replays
 
 Run `python download_games.py` to save full completed-game replays under
@@ -342,7 +344,7 @@ Activation diagnostics use a fixed random sample of 512 held-out observations.
 Checkpoints record weight-decay groups, BN scales, feature concentration, actual
 updates, and batch-stream hashes. Final legal-action metrics cover the entire
 held-out split. Results and comparison plots are saved under
-`out/stability-experiments/<timestamp>/`; production defaults stay unchanged.
+`out/experiments/<descriptive-run-name>/`; production defaults stay unchanged.
 
 For the matched dropout comparison (baseline, dense dropout 0.1 and 0.2, and
 dense BatchNorm plus dropout 0.1), use the same recipe and optionally reuse the
@@ -350,8 +352,8 @@ exact cached split from a previous round:
 
 ```sh
 .venv/bin/python training/stability_experiment.py --suite dropout \
-  --reuse-data out/stability-experiments/20261103T221924-729044Z \
-  --out-dir out/dropout-experiments
+  --reuse-data out/experiments/normalization-weight-decay-ablations-2560games-80k \
+  --out-dir out/experiments
 ```
 
 Dropout follows the hidden dense ReLU, is disabled for validation/inference, and
@@ -362,9 +364,9 @@ and a 1x1 convolution reducing trunk channels to one quarter before flattening):
 
 ```sh
 .venv/bin/python training/stability_experiment.py --suite architecture \
-  --reuse-data out/dropout-experiments/20261104T002130-541749Z \
-  --reference-run out/dropout-experiments/20261104T002130-541749Z \
-  --parallel 2 --out-dir out/architecture-experiments
+  --reuse-data out/experiments/dropout-dense-bn-ablations-2560games-80k \
+  --reference-run out/experiments/dropout-dense-bn-ablations-2560games-80k \
+  --parallel 2 --out-dir out/experiments
 ```
 
 The reference case is copied from the completed matching run; only the two new
@@ -386,8 +388,8 @@ This changes only the cosine horizon to 80,000 updates (same 5,820-step warmup),
 evaluates the entire validation split every 5,000 updates, and preserves the
 training RNG stream across the added evaluations. It saves separate best
 checkpoints for raw NLL, legal NLL, legal accuracy, and raw accuracy. Results go to
-`out/residual-decay-experiments/<timestamp>/`, and a comparison is appended to the
-reference architecture experiment's `report.md`. The reference and output root
+`out/experiments/<descriptive-run-name>/`, and findings are appended to the
+root `EXPERIMENT_HISTORY.md`. The reference and output root
 can be selected with `--reference-run` and `--out-dir`.
 
 A small local pilot compares both model types, ReLU versus LeakyReLU, and two
@@ -400,7 +402,7 @@ training-set sizes. Run from the repository root:
 Defaults: 32 and 128 training games, a fixed 16-game validation set, 8 convolution
 channels, a 32-dimensional feature/memory vector, 8 epochs, and four CPU threads.
 The full model remains 64 channels and 256 features. The pilot runs eight cases
-under `out/experiments/<timestamp>/`, with `experiment.json`, `comparison.png`,
+under `out/experiments/<descriptive-run-name>/`, with `experiment.json`, `comparison.png`,
 and per-case logs, checkpoints, metrics, and plots. Existing bot checkpoints are
 not replaced. Every case records the actual train/validation file list, seed,
 parameter count, optimizer-step count, and separate training/diagnostics timing.
@@ -430,7 +432,7 @@ Adam at 0.001, and batches of 128. It compares 8 channels / 32 features against
 Both models see identical shuffled full batches; SHA-256 hashes verify the
 cumulative input streams at each checkpoint. Training metrics average over each
 interval between checkpoints; validation metrics describe the checkpoint itself.
-Runs use CPU with four threads and save under `out/size-experiments/<timestamp>/`.
+Runs use CPU with four threads and save under `out/experiments/<descriptive-run-name>/`.
 Each contains a shared data manifest, `experiment.json`, `comparison.png`, and
 per-model metrics, checkpoints, plots, initial activation statistics, and final
 histograms. Existing bot checkpoints are not overwritten. Optional arguments

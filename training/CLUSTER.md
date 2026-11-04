@@ -1,7 +1,9 @@
-# Residual CNN: full-data, 50-epoch run
+Experimental findings are maintained in [EXPERIMENT_HISTORY.md](../EXPERIMENT_HISTORY.md). This document covers cluster operations.
+
+# Medium residual CNN: full-data, 50-epoch run
 
 Submit `sbatch training/residual_cnn.sbatch` from `~/fow` after creating `logs/`.
-This uses all games in the fixed 90/10 split, 16 channels, 64 hidden features,
+This uses all games in the fixed 90/10 split, 32 channels, 128 hidden features (850,785 parameters),
 three residual blocks, convolutional BatchNorm, ReLU, default initialization,
 and hidden dropout 0.1. AdamW uses betas (0.9, 0.99), eps 1e-8, decay 0.01;
 batch size 128 and global clipping 5. Warmup is 5,820 updates from 1e-4 to
@@ -12,8 +14,8 @@ One GPU, 32 GiB RAM, four CPU cores, six-hour allocation.
 8,192 held-out moves each epoch, retaining the earlier checkpoint on ties.
 Raw validation loss/accuracy still use the entire validation split.
 `last_policy.pt` and `final_policy.pt` are also retained, with diagnostics.
-Results: `out/cluster/residual-<job-id>/`; logs: `logs/residual-<job-id>.*`.
-Resume with `sbatch training/residual_cnn.sbatch --resume out/cluster/residual-JOBID/last_policy.pt`.
+Results: `out/experiments/residual-medium-<job-id>/`; logs: `logs/residual-medium-<job-id>.*`.
+Resume with `sbatch training/residual_cnn.sbatch --resume out/experiments/residual-medium-JOBID/last_policy.pt`.
 Resume preserves architecture, optimizer, schedule and checkpoint selection.
 The earlier plain CNN instructions below remain available for old runs.
 
@@ -24,7 +26,7 @@ rsync -av --progress --prune-empty-dirs \
   --exclude='.git/' --exclude='.venv*/' --exclude='__pycache__/' \
   --exclude='game_data/' --exclude='out/' --exclude='logs/' \
   --exclude='evaluation_results/' --exclude='build/' \
-  --include='*/' --include='*.py' --include='*.sbatch' \
+  --include='*/' --include='*.py' --include='*.sh' --include='*.sbatch' \
   --include='*.txt' --include='*.toml' --include='*.md' --exclude='*' \
   ./ jesusca@orcd-login.mit.edu:~/fow/
 ```
@@ -35,7 +37,7 @@ The included `training/full_cnn.sbatch` requests one GPU on `mit_normal_gpu`, fo
 CPU cores, 32 GiB RAM, and six hours. Submit from the repository root. Create
 `logs/` before submission because Slurm opens log files before the script runs.
 The script uses `.venv-cnn`, checks CUDA, and writes to
-`out/cluster/full-cnn-<job-id>/`.
+`out/experiments/full-cnn-<job-id>/`.
 
 Official references: [ORCD scheduling](https://orcd-docs.mit.edu/running-jobs/overview/),
 [GPU requests](https://orcd-docs.mit.edu/running-jobs/requesting-resources/), and
@@ -86,7 +88,7 @@ source .venv-cnn/bin/activate
 python -m pip install --upgrade pip
 python -m pip install 'torch>=2.6,<3' --index-url https://download.pytorch.org/whl/cu128
 python -m pip install -r training/requirements.txt
-mkdir -p logs out/cluster
+mkdir -p logs out/experiments
 ```
 
 The CUDA wheel supplies the PyTorch CUDA runtime; the job checks GPU access
@@ -119,7 +121,7 @@ tail -f "logs/full-cnn-${cnn_job_id}.err"
 
 ```bash
 sacct -j "$cnn_job_id" --format=JobID,State,Elapsed,MaxRSS
-ls "out/cluster/full-cnn-${cnn_job_id}"
+ls "out/experiments/full-cnn-${cnn_job_id}"
 ```
 
 To change the epoch budget before starting a new run, append `--epochs 12` to
@@ -132,7 +134,7 @@ Each completed epoch saves `last_policy.pt`. Resume in a new six-hour allocation
 from the previous job's checkpoint (replace `12345678` with its job ID):
 
 ```bash
-sbatch training/full_cnn.sbatch --resume out/cluster/full-cnn-12345678/last_policy.pt
+sbatch training/full_cnn.sbatch --resume out/experiments/full-cnn-12345678/last_policy.pt
 ```
 
 Pass `--resume` first. The new job's logs use its new job ID, while results stay
@@ -146,10 +148,10 @@ its first epoch, there is no completed-epoch checkpoint to resume yet.
 In a local terminal, from the repository root:
 
 ```bash
-mkdir -p out/cluster-downloads
+mkdir -p out/experiments
 rsync -av --progress \
-  jesusca@orcd-login.mit.edu:~/fow/out/cluster/ \
-  out/cluster-downloads/
+  jesusca@orcd-login.mit.edu:~/fow/out/experiments/ \
+  out/experiments/
 ```
 
 Each run remains inside its job-specific directory. Existing local experiment
@@ -161,3 +163,15 @@ to update that downloaded run.
 data split, loss/LR/gradient/update/legality/dormancy plots, final weight and
 activation histograms, and histogram JSON. Final plots are generated when all
 epochs finish; checkpoints and metrics are saved after every completed epoch.
+
+## Jobs submitted before artifact consolidation
+
+Jobs already running from the previous script still write under `~/fow/out/cluster/`. Do not rename their server directories while they run. To download the active medium residual after it finishes, use this on the Mac (replace JOBID):
+
+```bash
+mkdir -p /Users/jesuscaraball0/code/school_code/67980/fow/out/experiments
+scp -r jesusca@orcd-login.mit.edu:~/fow/out/cluster/residual-medium-JOBID \
+  /Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/
+```
+
+New submissions after syncing the updated scripts write directly under `~/fow/out/experiments/`.

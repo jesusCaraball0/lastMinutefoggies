@@ -2,7 +2,6 @@
 """Match the residual stress test while completing cosine decay in 80k updates."""
 from __future__ import annotations
 import argparse
-from datetime import datetime, timezone
 import json
 import math
 import os
@@ -15,12 +14,13 @@ sys.path.insert(0, str(ROOT))
 import torch
 from starters.shared.model import create_policy
 from training.datasets import observation_planes
+from training.artifacts import EXPERIMENTS, unused_run_path, append_findings
 from training.diagnostics import write_json
 from training.probes import PolicyProbes
 from training.size_experiment import warmup_cosine_lr
 from training.stability_experiment import args_from_cli, run_case
 
-REFERENCE = ROOT / 'out/architecture-experiments/20261104T005307-352645Z'
+REFERENCE = ROOT / 'out/experiments/residual-reduced-head-ablations-2560games-80k'
 
 
 def calibration(checkpoint, probes):
@@ -175,10 +175,7 @@ def finish(destination, reference):
             'generalization claims. No arena evaluation or production-default changes.','',
             f'![Residual decay comparison]({destination}/comparison.png)','']
     section='\n'.join(lines)
-    (destination/'report.md').write_text(section)
-    report_path=reference/'report.md';existing=report_path.read_text();marker='\n## Residual CNN: faster learning-rate decay experiment\n'
-    if marker in existing: existing=existing[:existing.index(marker)]
-    report_path.write_text(existing.rstrip()+'\n\n'+section)
+    append_findings(section)
     print(section,flush=True)
     return summary
 
@@ -186,12 +183,12 @@ def finish(destination, reference):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference-run',type=Path,default=REFERENCE)
-    parser.add_argument('--out-dir',type=Path,default=ROOT/'out/residual-decay-experiments')
+    parser.add_argument('--out-dir',type=Path,default=EXPERIMENTS)
     options=parser.parse_args()
     reference=options.reference_run.resolve()
     source=json.loads((reference/'residual_3/metrics.json').read_text())
     if source['status']!='completed':raise ValueError('Reference must be complete')
-    destination=options.out_dir.resolve()/datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S-%fZ')
+    destination=unused_run_path(options.out_dir.resolve(), 'residual-faster-cosine-decay-2560games-80k')
     destination.mkdir(parents=True)
     shutil.copy2(reference/'data_split.json',destination/'data_split.json')
     for split in ('train','validation'):
@@ -212,7 +209,7 @@ def main():
     except BaseException as error:
         write_json(destination/'experiment.json',dict(status='failed',reference=str(reference),error=str(error),arguments=command))
         raise
-    print(f'Completed experiment and updated report: {destination}',flush=True)
+    print(f'Completed experiment and appended findings to EXPERIMENT_HISTORY.md: {destination}',flush=True)
 
 
 if __name__=='__main__':main()

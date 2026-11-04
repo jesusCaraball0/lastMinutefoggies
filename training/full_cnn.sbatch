@@ -18,13 +18,13 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export PYTHONUNBUFFERED=1
 export MPLCONFIGDIR="${SLURM_TMPDIR:-/tmp}/fow-matplotlib-${SLURM_JOB_ID}"
-mkdir -p "$MPLCONFIGDIR" out/cluster
+mkdir -p "$MPLCONFIGDIR" out/experiments
 nvidia-smi
 python -c 'import torch; assert torch.cuda.is_available(), "CUDA is unavailable"; print("PyTorch:", torch.__version__, "GPU:", torch.cuda.get_device_name(0))'
 
 # A fresh directory for every new job. Resume stays in its original run directory.
 run_args=(--device cuda --threads "$SLURM_CPUS_PER_TASK")
 if [[ "${1:-}" != "--resume" ]]; then
-    run_args+=(--run-dir "out/cluster/full-cnn-${SLURM_JOB_ID}")
+    run_args+=(--run-dir "out/experiments/full-cnn-${SLURM_JOB_ID}")
 fi
 srun python -u training/train.py "${run_args[@]}" "$@"

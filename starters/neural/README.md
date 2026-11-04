@@ -1,5 +1,7 @@
 # Feedforward neural bot
 
+Experimental findings live in [EXPERIMENT_HISTORY.md](../../EXPERIMENT_HISTORY.md); this file documents the bot interface and usage.
+
 This bot owns its `policy.pt` and uses the model definitions, observation tracker,
 and arena protocol implementation in `starters/shared/`.
 

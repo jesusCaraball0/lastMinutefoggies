@@ -1,5 +1,7 @@
 # Shared neural bot code
 
+Experimental findings live in [EXPERIMENT_HISTORY.md](../../EXPERIMENT_HISTORY.md); this file documents the bot interface and usage.
+
 - `model.py`: feedforward and recurrent architectures, observation encoding,
   and the training interface. Training datasets remain in `training/`.
 - `moves.py`: observation history, legal move generation, and visible king safety.

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import sys
@@ -18,6 +17,7 @@ from tqdm import tqdm
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from starters.shared.model import create_policy
+from training.artifacts import EXPERIMENTS, unused_run_path
 from training.datasets import observation_planes, split_games
 from training.diagnostics import GradientNorms, final_histograms, plot_diagnostics, write_json
 from training.probes import PolicyProbes, UpdateRatios
@@ -52,7 +52,7 @@ EPSILON = 1e-8
 VALIDATION_FRACTION = 0.1
 SEED = 7980
 DEVICE = "auto"  # "auto", "cpu", "mps", or "cuda"
-OUT_DIR = ROOT / "out"
+OUT_DIR = EXPERIMENTS
 HISTOGRAM_BINS = 60
 HISTOGRAM_MAX_OBSERVATIONS = 512
 HISTOGRAM_MAX_VALUES_PER_LAYER = 50000
@@ -241,7 +241,7 @@ def main(argv=None):
         split = json.loads((run_dir / 'data_split.json').read_text())
         train_paths, validation_paths = ([Path(p) for p in split[key]] for key in ('train', 'validation'))
     else:
-        run_dir = args.run_dir or args.out_dir / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S-%fZ') + '-' + args.model_type)
+        run_dir = args.run_dir or unused_run_path(args.out_dir, f'train-c{args.channels}-h{args.hidden_size}-res{args.residual_blocks}-{args.epochs}epochs-{args.model_type}')
         if run_dir.exists():
             raise FileExistsError(f'{run_dir} already exists; use --resume or a fresh --run-dir')
         train_paths, validation_paths = split_games(args.data_dir.glob('*.json'), args.validation_fraction, args.seed)

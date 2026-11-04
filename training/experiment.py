@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -15,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 import torch
 from training import train
 from training.datasets import split_games
+from training.artifacts import EXPERIMENTS, unused_run_path
 from training.diagnostics import write_json
 
 
@@ -37,7 +37,7 @@ def parse_args(argv=None):
                         default=['relu', 'leaky_relu'])
     parser.add_argument('--device', choices=['cpu', 'mps', 'cuda', 'auto'], default='cpu')
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'game_data')
-    parser.add_argument('--out-dir', type=Path, default=ROOT / 'out/experiments')
+    parser.add_argument('--out-dir', type=Path, default=EXPERIMENTS)
     parser.add_argument('--diagnostic-positions', type=int, default=128)
     parser.add_argument('--activation-observations', type=int, default=64)
     args = parser.parse_args(argv)
@@ -80,7 +80,7 @@ def main(argv=None):
     if max(args.train_games) > len(available_train) or args.val_games > len(available_val):
         raise ValueError(f'Request exceeds available split: {len(available_train)} train, {len(available_val)} validation games')
     torch.set_num_threads(args.threads)
-    destination = args.out_dir / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S-%fZ')
+    destination = unused_run_path(args.out_dir, f'activation-recurrence-pilot-c{args.channels}-h{args.hidden_size}-{args.epochs}epochs')
     destination.mkdir(parents=True)
     settings = {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
     report = {'status': 'running', 'settings': settings, 'cases': [],

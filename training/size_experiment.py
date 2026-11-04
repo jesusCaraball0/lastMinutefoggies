@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-from datetime import datetime, timezone
 import hashlib
 import math
 from itertools import islice
@@ -19,6 +18,7 @@ from torch.utils.data import DataLoader
 from starters.shared.model import create_policy
 from training import train
 from training.datasets import ReplayDataset, split_games
+from training.artifacts import EXPERIMENTS, unused_run_path
 from training.diagnostics import final_histograms, plot_diagnostics, write_json
 from training.probes import PolicyProbes
 
@@ -99,7 +99,7 @@ def parse_args(argv=None):
     parser.add_argument('--diagnostic-positions', type=int, default=128)
     parser.add_argument('--activation-observations', type=int, default=512)
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'game_data')
-    parser.add_argument('--out-dir', type=Path, default=ROOT / 'out/size-experiments')
+    parser.add_argument('--out-dir', type=Path, default=EXPERIMENTS)
     args = parser.parse_args(argv)
     if min(args.train_games, args.val_games, args.batch_size, args.threads,
            args.diagnostic_positions, args.activation_observations, *args.checkpoints) < 1:
@@ -166,7 +166,7 @@ def main(argv=None):
     if len(train_paths) < args.train_games or len(val_paths) < args.val_games:
         raise ValueError('Not enough games in the fixed train/validation split')
     train_paths, val_paths = train_paths[:args.train_games], val_paths[:args.val_games]
-    destination = args.out_dir / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S-%fZ')
+    destination = unused_run_path(args.out_dir, f'cnn-size-{args.optimizer}-{args.train_games}games-{args.conv_init}')
     destination.mkdir(parents=True)
     write_json(destination / 'data_split.json', {'train': list(map(str, train_paths)),
                                                'validation': list(map(str, val_paths))})

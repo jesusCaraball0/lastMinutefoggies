@@ -2,7 +2,6 @@
 """Play two bot directories against each other, alternating colors."""
 import argparse
 from collections import Counter
-from datetime import datetime
 import hashlib
 import json
 import math
@@ -14,6 +13,7 @@ from tempfile import TemporaryDirectory
 import time
 
 from referee import run_match
+from training.artifacts import EXPERIMENTS, unused_run_path
 from starters.shared.bundle import bundle_bot
 
 ROOT = Path(__file__).resolve().parent
@@ -36,7 +36,7 @@ def parse_args(argv=None):
     parser.add_argument("--base-time", type=float, default=180)
     parser.add_argument("--increment", type=float, default=2)
     parser.add_argument("--max-plies", type=int, default=1000)
-    parser.add_argument("--results-dir", type=Path, default=ROOT / "evaluation_results")
+    parser.add_argument("--results-dir", type=Path, default=EXPERIMENTS)
     args = parser.parse_args(argv)
     if args.games < 2 or args.games % 2:
         parser.error("--games must be a positive even number to balance colors")
@@ -80,7 +80,7 @@ def main(argv=None):
         commands = [["bash", str(bundle / "run.sh")] for bundle in bundles]
         # run.sh uses python3; keep it in the evaluator's Python environment.
         os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")
-        output = args.results_dir / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        output = unused_run_path(args.results_dir, f'arena-{args.bot_a.name}-vs-{args.bot_b.name}-{args.games}games')
         output.mkdir(parents=True)
         for name, bot in zip(names, bots):
             print(f"{name}: {bot['directory']}\nCheckpoint SHA256: {bot['sha256'] or 'no policy.pt'}", flush=True)

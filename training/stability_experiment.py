@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import copy
-from datetime import datetime, timezone
 from itertools import islice
 import json
 from pathlib import Path
@@ -20,6 +19,7 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from starters.shared.model import create_policy
 from training import train
 from training.datasets import ReplayDataset, split_games, observation_planes
+from training.artifacts import EXPERIMENTS, unused_run_path
 from training.diagnostics import final_histograms, plot_diagnostics, write_json
 from training.optim import weight_decay_groups
 from training.probes import PolicyProbes
@@ -69,7 +69,7 @@ def args_from_cli(argv=None):
     parser.add_argument('--case', choices=CASES)
     parser.add_argument('--run-dir', type=Path)
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'game_data')
-    parser.add_argument('--out-dir', type=Path, default=ROOT / 'out/stability-experiments')
+    parser.add_argument('--out-dir', type=Path, default=EXPERIMENTS)
     args = parser.parse_args(argv)
     if min(args.train_games, args.val_games, args.channels, args.hidden_size, args.batch_size,
            args.schedule_updates, args.warmup_updates, args.threads, args.parallel, *args.checkpoints) < 1:
@@ -278,7 +278,7 @@ def main(argv=None):
         run_case(args)
         return args.run_dir
     torch.set_num_threads(args.threads)
-    destination = args.run_dir or args.out_dir / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S-%fZ')
+    destination = args.run_dir or unused_run_path(args.out_dir, f'{args.suite}-ablations-c{args.channels}-h{args.hidden_size}-{args.train_games}games-{args.checkpoints[-1]}updates')
     destination.mkdir(parents=True)
     if args.reuse_data:
         import os

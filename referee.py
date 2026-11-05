@@ -557,7 +557,10 @@ class Bot:
 def run_match(white_argv, black_argv, base=180, increment=2, match_id=None,
               white_name='White', black_name='Black', max_plies=10000,
               ready_files=None, startup_timeout=10, initialization_timeout=INITIALIZATION_SECONDS,
-              turn_control_factory=None):
+              turn_control_factory=None, bot_factory=None):
+    # Training can adapt in-process agents to Bot's interface while retaining
+    # this exact match loop, observations, clocks, validation and terminal rules.
+    factory = Bot if bot_factory is None else bot_factory
     if base <= 0 or increment < 0 or not all(map(lambda x: x < float('inf'), (base, increment))):
         raise ValueError('Time control must be finite, with positive base and nonnegative increment')
     board = FowBoard()
@@ -573,8 +576,8 @@ def run_match(white_argv, black_argv, base=180, increment=2, match_id=None,
         for side, argv in [(chess.WHITE, white_argv), (chess.BLACK, black_argv)]:
             try:
                 ready = ready_files[0 if side else 1] if ready_files else None
-                bots.append(Bot(argv, side, base, increment, ready, startup_timeout,
-                                initialization_timeout, timeline, turn_control_factory))
+                bots.append(factory(argv, side, base, increment, ready, startup_timeout,
+                                    initialization_timeout, timeline, turn_control_factory))
             except (OSError, BotFailure) as error:
                 if getattr(error, 'private_diagnostics', ''):
                     replay.setdefault('privateDiagnostics', {})['white' if side else 'black'] = error.private_diagnostics

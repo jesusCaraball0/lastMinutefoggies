@@ -271,6 +271,18 @@ OOM message alone is not enough.
 Validation games do not count toward Elo. Timeouts and OOM in rated games are
 losses.
 
+## Reinforcement learning
+
+PPO infrastructure and operating commands are in [rl/README.md](rl/README.md).
+It reuses the provided referee match loop, supports frozen checkpoints,
+executable bot opponents, and self-play, and fine-tunes an existing feedforward
+policy without changing its architecture. Each feedforward variant keeps one
+persistent `out/rl/<variant>/policy.pt` containing latest training state and best
+policy weights; subsequent launches continue it. Supervised checkpoints remain
+separate. `rl/train_pair.py` lets two feedforward variants play the same games
+and both update through their own PPO optimizer. PPO findings remain in
+[EXPERIMENT_HISTORY.md](EXPERIMENT_HISTORY.md).
+
 ## Neural policy: train, evaluate, and submit
 
 Training code and dependencies live in `training/`. Run from the repository

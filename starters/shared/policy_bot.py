@@ -1,5 +1,6 @@
 """Play a trained feedforward or recurrent policy using the arena protocol."""
 import sys
+import math
 
 import chess
 import torch
@@ -18,6 +19,11 @@ def load_policy(path):
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     model.recurrent = checkpoint["kind"] == "recurrent"
+    # PPO exports retain the exact sampling temperature used for rollouts.
+    # Historical imitation policies keep the requested 0.9 behavior.
+    model.temperature = float(checkpoint.get('inference_temperature', TEMPERATURE))
+    if not math.isfinite(model.temperature) or model.temperature <= 0:
+        raise ValueError('Checkpoint sampling temperature must be positive and finite')
     return model
 
 
@@ -50,7 +56,7 @@ def main(checkpoint):
                 logits, _, _ = model(encode(tracker.current).unsqueeze(0))
             indices = [move.from_square * 64 + move.to_square for move in moves]
             # Normalize only legal candidates; each new process gets fresh RNG state.
-            probabilities = torch.softmax(logits[0, indices] / TEMPERATURE, dim=0)
+            probabilities = torch.softmax(logits[0, indices] / model.temperature, dim=0)
             move = moves[torch.multinomial(probabilities, num_samples=1).item()]
             tracker.record_move(move)
             print("move " + move.uci(), flush=True)

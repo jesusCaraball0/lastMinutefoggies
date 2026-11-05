@@ -2,7 +2,7 @@
 
 Consolidated on **2026-11-04 (America/New_York)**. Repository: `/Users/jesuscaraball0/code/school_code/67980/fow`.
 
-**This is the single source of truth for experimental findings and conclusions.** Raw metrics/checkpoints/replays are the underlying evidence; other project documentation covers operation and setup, not a parallel findings record. This document combines the locally retained numerical artifacts, historical Markdown analyses, and findings discussed in the working conversation. It covers successful runs, partial/failed attempts, reused references, negative results, instrumentation changes, and unresolved hypotheses. It does **not** invent results for missing artifacts or the newly submitted medium residual run.
+**This is the single source of truth for supervised/imitation experiment findings. RL findings, stages30–44, are maintained in [RL_EXPERIMENT_HISTORY.md](RL_EXPERIMENT_HISTORY.md).** Raw metrics/checkpoints/replays are the underlying evidence; other project documentation covers operation and setup, not a parallel findings record. This document combines the locally retained numerical artifacts, historical Markdown analyses, and findings discussed in the working conversation. It covers successful runs, partial/failed attempts, reused references, negative results, instrumentation changes, and unresolved hypotheses. It does **not** invent results for missing artifacts or the newly submitted medium residual run.
 
 ## How to read this record
 
@@ -13,6 +13,8 @@ The numbered stages below follow experiment history. Timestamped training folder
 **Coverage:** all locally discovered training `metrics.json` records and saved evaluation summaries are catalogued below. Reused references are not counted as independent evidence. The original raw artifacts remain the source of full per-step LR traces, per-channel arrays, histogram bins, split manifests, RNG states, and game replays; this document records all run outcomes and aggregate diagnostic findings rather than reproducing millions of raw values. No independent test set has been established by this work; repeated validation-driven experimentation can adapt to the held-out games.
 
 ### Contents
+
+RL results through update1200 and the current-checkpoint round robin are in [the RL experiment report](RL_EXPERIMENT_HISTORY.md). Earlier pending status is historical.
 
 - [1. Original policies and early arena evaluation (October 26–27)](#stage-1)
 - [2. Bot split, sampling, visible king safety, and recurrent interpretation](#stage-2)
@@ -41,6 +43,18 @@ The numbered stages below follow experiment history. Timestamped training folder
 - [25. Medium residual next run: prepared/submission instructed, results pending](#stage-25)
 - [26. Current evidence, open questions, and superseded claims](#stage-26)
 - [27. Coverage ledger and literature](#stage-27)
+- [28. Completed full-data medium residual: job27890681](#stage-28)
+- [29. Medium residual versus full CNN: 100 arena games](#stage-29)
+- [30. Readiness to move to PPO](RL_EXPERIMENT_HISTORY.md#stage-30)
+- [31. PPO infrastructure and CPU pipeline validation](RL_EXPERIMENT_HISTORY.md#stage-31)
+- [32. PPO draw bonus and expanded learning diagnostics](RL_EXPERIMENT_HISTORY.md#stage-32)
+- [33. One persistent RL checkpoint per model variant](RL_EXPERIMENT_HISTORY.md#stage-33)
+- [34. Training both CNN variants: current capability and literature](RL_EXPERIMENT_HISTORY.md#stage-34)
+- [35. Minimal paired PPO: both CNNs learn from the same games](RL_EXPERIMENT_HISTORY.md#stage-35)
+- [36. Full CNN and medium residual: 400 paired PPO updates](RL_EXPERIMENT_HISTORY.md#stage-36)
+- [37. Assessing value pretraining on historical games](RL_EXPERIMENT_HISTORY.md#stage-37)
+- [38. Historical value-head warmup, then PPO updates401–800](RL_EXPERIMENT_HISTORY.md#stage-38)
+- [39. Completed historical value warmup and PPO through800](RL_EXPERIMENT_HISTORY.md#stage-39)
 
 <a id="stage-1"></a>
 
@@ -25870,3 +25884,1902 @@ indices are unchanged, so existing checkpoints retain their original behavior.
 ### Artifact policy after consolidation
 
 `EXPERIMENT_HISTORY.md` is the sole narrative findings record. Raw metrics, split manifests, checkpoint files and plots remain evidence under `out/experiments/`. New local training and evaluation runs use descriptive names, with `-repeat2`, `-repeat3`, etc. when a name is already used. Explicit output/run-directory overrides remain supported. The residual-decay runner appends generated findings here instead of recreating per-run reports. The artifact_migration.json file records relocations and hashes of retired reports; it is provenance, not a second findings report. New cluster jobs save under out/experiments; the in-flight medium residual job retains its old server output path until completion.
+
+
+<a id="stage-28"></a>
+
+## 28. Completed full-data medium residual: job 27890681 (2026-11-04)
+
+This resolves the pending medium residual experiment described in stage25. Numerical evidence is in `/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/metrics.json`, checkpoint inspection and comparative aggregates in `/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/analysis-summary.json`. No new training or arena games were run for this analysis.
+
+### Recipe, data and comparison controls
+
+The 32-channel /128-hidden, three-block residual CNN has **850,785 parameters**. It completed all **50 epochs /2,090,250 updates**, in **13,678.55 seconds (3.80 hours)**. Small residual baseline:348,081 parameters, same 50 epochs and2,090,250 updates,2.59hours. This is2.44× the parameters and1.47× the measured wall time in these cluster runs; hardware equivalence is not independently established, so wall-time scaling is descriptive rather than a controlled throughput law.
+
+Both use full data (5,350,942 training positions from55,250 usable games;595,179 validation positions from6,141 usable games), seed 7980, batch 128, default initialization, ReLU, convolutional BN, hidden dropout0.1, AdamW(.9,.99), eps1e-8, weight decay.01, global clip 5, warmup 5,820 updates1e-4→1e-3 and cosine decay over the remaining50epochbudget to1e-5. Saved settings match except model dimensions/parameter count and run-specific paths. Ordered split filenames match the small residual and plain CNN. Split manifests list55,301/6,144 replay files, whereas datasets count55,250/6,141 usable games: ReplayDataset increments games only for files containing examples, so these are not contradictory counts. Same seed and data do not make different-width initializations a paired-seed average or prove identical minibatch tensor hashes; no such hashes were recorded by this production trainer.
+
+### Prediction results
+
+| Model | Parameters | Epochs | Final full-val raw NLL | Final full-val raw accuracy | Best saved legal-probe accuracy | Saved best epoch |
+| --- | --- | --- | --- | --- | --- | --- |
+| Small residual16/64 |348,081|50|2.889692|27.7926%|28.7720%|43|
+| Medium residual32/128 |850,785|50|2.613601|31.1537%|31.5186%|49|
+| Plain full CNN64/256+BN |2,147,073|8|2.580976|30.9801%|31.2744% at its saved epoch 8|8|
+
+“Best saved legal accuracy” uses the same fixed8,192-position probe, not the595,179-position full validation set. The plain CNN's saved best criterion was raw NLL, whereas the residuals select legal-probe accuracy. The table does not imply the plain CNN was selected by legal accuracy or that its best legal-probe accuracy across all epochs has been searched. Final and saved-best states differ in residual models.
+
+The medium model's final raw accuracy improves by **3.3610 percentage points** over the small residual; raw NLL improves by **0.276092**. Best legal-probe accuracy rises by **2.7466points**. This supports a capacity benefit for this recipe; the earlier small model was not sufficient to characterize all residual models.
+
+Versus the plain CNN, final raw accuracy is only **0.1736points higher**, while raw NLL is **0.032624 worse**, despite50epochs versus8 (6.25× optimizer updates). This is a metric/compute tradeoff, not a decisive residual victory. At the same eight-epoch exposure, the medium residual had raw NLL 2.829686 and accuracy 28.2238%, versus the plain CNN's 2.580976 and 30.9801%; it needed substantially more training to close that gap. Best-legal-probe accuracy is0.2441points higher than the plain CNN's epoch 8 probe, an exploratory comparison after repeated validation use; correlated positions and one seed limit significance claims. No new playing-strength comparison has been run, so neither the previous32–68 small-residual result nor imitation accuracy establishes medium-residual strength.
+
+**Checkpoint choice:** `best_policy.pt` is epoch 49, legal-probe accuracy31.5186%, raw accuracy31.15315%, raw NLL2.613681, legal-probe NLL2.514548. `final_policy.pt` is epoch 50, raw accuracy31.15365%, raw NLL2.613601, legal-probe accuracy31.2622%, legal NLL 2.508901. Thus final has slightly better raw NLL/accuracy and legal NLL, while the saved best is correctly chosen by higher probe accuracy. Differences in raw accuracy between epochs49and50 are tiny (three full-validation correct predictions).
+
+### Learning trajectory: not ordinary late validation overfitting
+
+Validation raw NLL goes2.8524→2.6136 and raw accuracy27.70%→31.15%; the best recorded full-validation NLL and raw accuracy are at epoch 50. Validation has noticeable transients (e.g. epoch 13NLL3.0532 and epoch 30NLL2.9562) but late performance continues improving. Training NLL is2.6614 at epoch 49 and2.6706 at epoch 50, measured with active dropout; validation uses dropout off. The final training-loss increase and extreme gradient maximum are observations, not proof of causal divergence. The train/validation loss ordering does not by itself indicate leakage. Increasing size has not produced the classic late validation-NLL overfitting pattern in this full-data run.
+
+### Optimization problem persists and rare tails worsen
+
+Clipped updates:9.86% in epoch 1,65.02% in epoch 2,99.29% in epoch 3, **100% from epoch 4 through50**. Global pre-clip median is2.93 initially,14.49 at epoch 3,44.63 finally; finalp95is110.34. Compared with the small residual's final median36.25,p9581.98, this is a larger gradient burden; width also changes the number of parameters, so raw L2 norms are not dimension-normalized health scores.
+
+Rare maximum gradients are markedly larger: **69,942.66 at epoch 50**, versus small model's overall maximum522.02. Other medium epochs include6,704.75(epoch 20),10,321.11(epoch 24),8,378.89(epoch 28),65,786.45(epoch 30). All recorded gradients and inspected best/final parameters/buffers are finite; maximum post-clip norm is5.00000143, consistent with float32 reduction tolerance. The largest50th-epoch per-layer maxima include stemBN48,676.14, first-blockBN2 27,166.30, second-blockBN2 21,981.56, last-blockBN2 20,031.33 and stemconv15,025.81. Typical final median gradients are led by second-blockBN2 26.39, last-blockBN2 20.27, last-blockBN1 18.91, last-blockconv1 10.99, last-blockconv2 10.53. This is not exclusively a classifier-head problem.
+
+Clipping kept raw gradient norms bounded after rescaling, but does not directly bound AdamW parameter changes. Actual sampled relative-update medians decrease withLR: stem0.001474→0.00001460, dense0.001622→0.000001555, policy0.0001375→0.0000002658. They are not sampled at every update, so these summaries cannot certify the exact optimizer update on the rare spike steps. The model kept learning; calling it numerically divergent or claiming clipping solved it would both overstate the evidence.
+
+### Feature concentration remains severe in the late trunk
+
+Exact activation reductions cover512 validation observations, not the whole split.
+
+| Final diagnostic | Small residual16/64 | Medium residual32/128 |
+| --- | --- | --- |
+| Stem ReLU dormant channels |0/16|0/32|
+| Last-trunk zero activation fraction |91.57%|96.71%|
+| Last-trunk relatively dormant channels |9/16(56.25%)|21/32(65.625%)|
+| Last-trunk top-channel activity share |98.39%|89.68%|
+| Last-trunk top-four share |99.36%|98.10%|
+| Dense relatively dormant features |2/64(3.125%)|13/128(10.156%)|
+| Dense top-four activity share |12.59%|18.17%|
+
+One dominant trunk channel remains, although its share is lower than in the small residual. Dormancy and sparsity increased; dense activity became less balanced on these measures. Because widths differ, a fixed top-four share has a different uniform baseline (6.25% versus3.125% in the dense layer). These are mixed internal changes, not a uniform “healthier” or “collapsed” verdict. Activity share is not causal importance or feature-information rank; channel ablation and standardized covariance tests have not been run for this model.
+
+The last trunk already had top-channel share67.47% after epoch 1 and90.45% after epoch 3. By epoch 10 it was94.20%; the final89.68% is a partial reduction rather than late recovery to balanced channels. Second-block activity is also concentrated (finaltopchannel55.01%,topfour92.45%). Stem and first-block channels remain much more distributed.
+
+Best/final checkpoint inspection shows small learned BN scales in many channels: final stemgamma median.04042; lastbranchBN2 gamma median.03280 with maximum1.08949. Final lastbranchBN1 running variance minimum3.54e-5,median7.65e-4; lastbranchBN2 minimum.00208,median.06223. These are finite and do not alone prove bad buffers or identify a causal mechanism. Dense weightL2~523.86,policy~3261.42; policy softmax has a common-offset invariance, so larger norms are not by themselves a prediction-quality test.
+
+### Takeaways and next decisions
+
+1. **Capacity helped predictions.** The medium residual substantially closes the small model's validation gap while using~60% fewer parameters than the plainfull CNN. The small model's weakness was not evidence that residual connections are inherently inferior.
+2. **Capacity did not cure the internal problem.** Sustained clipping, strongly concentrated late-trunk activity, small BN scales and very large rare gradient tails persist. Do not infer that making it larger again is a fix.
+3. **The medium result is competitive, not an established overall winner.** Raw accuracy is slightly higher than the plain CNN, NLL worse, training exposure much larger, and playing strength unmeasured. The original Adam50epoch feedforward run also exists with different settings; this comparison does not claim best-ever accuracy across all historical runs.
+4. **Keep the requested accuracy-based checkpoint.** Epoch49 is the exported best; retain final separately. Since selection uses8,192 positions, avoid treating a small probe difference as proof of full-distribution improvement.
+5. **Next useful check is the existing arena evaluator:** medium best versus small residual best and the prior full CNN best, with equal colors and identical inference settings. This analysis did not run those games. Before another widening/long training run, isolate one optimization intervention at this same medium capacity. Normalization/bias decay exemption is still only a candidate: the prior plain-model subset test was nearly neutral and fixed affine was worse. No causal remedy has yet been demonstrated.
+
+![Matched full-data small versus medium residual curves](/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/comparison-small-vs-medium.png)
+
+### Complete recorded run evidence
+
+### Run: out/experiments/residual-medium-27890681
+
+Primary source: `/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/metrics.json`.
+
+#### Recorded configuration and outcome metadata
+
+```json
+{
+  "metadata": {
+    "schema_version": 4,
+    "status": "completed",
+    "best_epoch": 49,
+    "best_validation_loss": 2.6136006132676073,
+    "best_selection_score": 0.315185546875,
+    "selection_metric": "legal_accuracy",
+    "best_selection_value": 0.315185546875,
+    "wall_seconds": 13678.549309206195
+  },
+  "config": {
+    "settings": {
+      "model_type": "feedforward",
+      "activation": "relu",
+      "negative_slope": 0.01,
+      "channels": 32,
+      "hidden_size": 128,
+      "batch_norm": true,
+      "grad_clip_norm": 5.0,
+      "epochs": 50,
+      "batch_size": 128,
+      "sequence_batch_size": 16,
+      "sequence_length": 16,
+      "learning_rate": 0.0001,
+      "peak_learning_rate": 0.001,
+      "min_learning_rate": 1e-05,
+      "warmup_updates": 5820,
+      "schedule": "warmup_cosine",
+      "weight_decay": 0.01,
+      "beta_1": 0.9,
+      "beta_2": 0.99,
+      "epsilon": 1e-08,
+      "validation_fraction": 0.1,
+      "seed": 7980,
+      "device": "cuda",
+      "data_dir": "/orcd/home/002/jesusca/fow/game_data",
+      "out_dir": "/orcd/home/002/jesusca/fow/out",
+      "output": null,
+      "train_game_limit": null,
+      "validation_game_limit": null,
+      "probe_max_positions": 8192,
+      "threads": 4,
+      "residual_blocks": 3,
+      "dropout": 0.1,
+      "selection_metric": "legal_accuracy"
+    },
+    "model_type": "feedforward",
+    "activation": "relu",
+    "negative_slope": 0.01,
+    "model_config": {
+      "channels": 32,
+      "hidden_size": 128,
+      "batch_norm": true,
+      "residual_blocks": 3,
+      "dropout": 0.1
+    },
+    "parameter_count": 850785,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0001,
+    "weight_decay": 0.01,
+    "betas": [
+      0.9,
+      0.99
+    ],
+    "epsilon": 1e-08,
+    "gradient_clip_global_l2": 5.0,
+    "schedule": "warmup_cosine",
+    "warmup_updates": 5820,
+    "total_optimizer_updates": 2090250,
+    "epochs": 50,
+    "batch_size": 128,
+    "sequence_batch_size": 16,
+    "sequence_length": 16,
+    "seed": 7980,
+    "device": "cuda",
+    "torch_threads": 4,
+    "torch_version": "2.11.0+cu128",
+    "train_games": 55250,
+    "validation_games": 6141,
+    "train_positions": 5350942,
+    "validation_positions": 595179,
+    "probe_max_positions": 8192,
+    "probe_positions": 8192,
+    "probe_definition": "Fixed held-out histories, T=1; legality separate from safety; zero limit means full validation",
+    "dormant_definition": "Relative channel mean absolute activity <= 0.01 on selected validation observations",
+    "activation_statistics_definition": "Exact reductions over selected observations; histogram values use uniform sampling",
+    "update_sample_every": 100,
+    "histogram_max_observations": 512,
+    "histogram_max_values_per_layer": 50000,
+    "histogram_bins": 60
+  }
+}
+```
+
+Best recorded raw NLL: **2.613601** at 50; best recorded raw top-1: **31.154%** at 50. These are independent extrema among recorded checkpoints.
+
+#### Every recorded epoch/checkpoint
+
+Train metrics summarize the preceding training interval. Raw validation uses the run’s full selected validation set; legal metrics use the recorded probe size. LR start/end denote the actual trace when available. Gradient statistics are pre-clip. Missing historical metrics are shown as —.
+
+| Epoch/update | Positions seen/interval | Train NLL | Train top-1 | Val raw NLL | Val raw top-1 | Val top-5 | Probe n | Legal NLL | Legal top-1 | Legal mass | Legal entropy | LR start | LR end | Clipped | Grad mean | Grad median | Grad p95 | Grad max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 5,350,942 | 3.26642 | 23.708% | 2.85235 | 27.699% | 57.648% | 8,192 | 2.7049 | 28.076% | 83.402% | 2.25693 | 0.0001 | 0.000999272 | 9.858% | 3.32264 | 2.93251 | 5.52404 | 14.2649 |
+| 2 | 5,350,942 | 2.94036 | 27.050% | 2.83253 | 28.126% | 57.920% | 8,192 | 2.68095 | 27.625% | 82.371% | 2.30021 | 0.000999272 | 0.000996602 | 65.021% | 7.90417 | 6.17195 | 18.4688 | 48.2222 |
+| 3 | 5,350,942 | 2.94251 | 27.193% | 2.83571 | 28.089% | 57.927% | 8,192 | 2.68873 | 28.210% | 82.688% | 2.28339 | 0.000996602 | 0.00099198 | 99.290% | 17.9587 | 14.4865 | 41.5497 | 113.183 |
+| 4 | 5,350,942 | 2.94792 | 27.220% | 2.84095 | 28.339% | 57.907% | 8,192 | 2.64833 | 28.748% | 80.465% | 2.34122 | 0.00099198 | 0.000985426 | 100.000% | 26.3387 | 21.4436 | 60.9983 | 172.44 |
+| 5 | 5,350,942 | 2.95218 | 27.276% | 2.85233 | 28.135% | 57.784% | 8,192 | 2.75019 | 27.625% | 85.163% | 2.18844 | 0.000985426 | 0.000976966 | 100.000% | 30.937 | 25.2583 | 71.5057 | 284.214 |
+| 6 | 5,350,942 | 2.95213 | 27.283% | 2.8212 | 28.262% | 57.853% | 8,192 | 2.68138 | 28.577% | 83.154% | 2.25971 | 0.000976966 | 0.000966632 | 100.000% | 32.9068 | 26.8444 | 77.0097 | 325.116 |
+| 7 | 5,350,942 | 2.95136 | 27.321% | 2.92209 | 27.914% | 57.437% | 8,192 | 2.86541 | 27.979% | 88.196% | 2.05218 | 0.000966632 | 0.000954467 | 100.000% | 34.0823 | 27.6742 | 79.4959 | 268.657 |
+| 8 | 5,350,942 | 2.94445 | 27.407% | 2.82969 | 28.224% | 58.117% | 8,192 | 2.71751 | 27.808% | 84.930% | 2.22073 | 0.000954466 | 0.000940517 | 100.000% | 33.8392 | 27.4774 | 78.678 | 353.3 |
+| 9 | 5,350,942 | 2.94005 | 27.490% | 2.83498 | 28.160% | 57.996% | 8,192 | 2.62926 | 28.650% | 79.270% | 2.43042 | 0.000940517 | 0.000924839 | 100.000% | 33.8021 | 27.5836 | 78.2412 | 223.793 |
+| 10 | 5,350,942 | 2.93665 | 27.529% | 2.83326 | 28.389% | 58.093% | 8,192 | 2.67916 | 28.589% | 82.195% | 2.31201 | 0.000924839 | 0.000907495 | 100.000% | 34.2031 | 27.808 | 78.7812 | 269.648 |
+| 11 | 5,350,942 | 2.93173 | 27.598% | 2.82823 | 28.331% | 58.022% | 8,192 | 2.67454 | 28.210% | 82.426% | 2.33234 | 0.000907495 | 0.000888554 | 100.000% | 34.606 | 28.0943 | 80.2129 | 459.696 |
+| 12 | 5,350,942 | 2.9275 | 27.637% | 2.84275 | 28.050% | 57.666% | 8,192 | 2.7143 | 27.844% | 82.823% | 2.31477 | 0.000888553 | 0.00086809 | 100.000% | 34.906 | 28.454 | 80.4962 | 195.781 |
+| 13 | 5,350,942 | 2.92058 | 27.734% | 3.05318 | 27.420% | 56.926% | 8,192 | 3.03103 | 27.368% | 90.687% | 1.9324 | 0.00086809 | 0.000846186 | 100.000% | 34.7971 | 28.424 | 79.5742 | 249.123 |
+| 14 | 5,350,942 | 2.91538 | 27.807% | 2.81309 | 28.564% | 58.408% | 8,192 | 2.71403 | 28.308% | 85.487% | 2.19428 | 0.000846185 | 0.000822927 | 100.000% | 34.9767 | 28.5223 | 80.6738 | 299.654 |
+| 15 | 5,350,942 | 2.90904 | 27.864% | 2.81961 | 28.512% | 58.060% | 8,192 | 2.61755 | 28.735% | 79.311% | 2.41007 | 0.000822927 | 0.000798407 | 100.000% | 35.1497 | 28.6946 | 80.8141 | 923.667 |
+| 16 | 5,350,942 | 2.90008 | 27.965% | 2.85287 | 28.492% | 58.101% | 8,192 | 2.60977 | 29.028% | 77.230% | 2.44214 | 0.000798407 | 0.000772722 | 100.000% | 35.5564 | 29.0363 | 81.396 | 205.187 |
+| 17 | 5,350,942 | 2.89463 | 28.017% | 2.78831 | 28.939% | 59.145% | 8,192 | 2.65815 | 29.346% | 83.680% | 2.26283 | 0.000772722 | 0.000745975 | 100.000% | 36.3717 | 29.6377 | 83.3679 | 239.058 |
+| 18 | 5,350,942 | 2.88994 | 28.057% | 2.79699 | 28.740% | 58.776% | 8,192 | 2.69322 | 28.528% | 85.196% | 2.22432 | 0.000745975 | 0.000718272 | 100.000% | 37.3691 | 30.4177 | 86.0804 | 441.086 |
+| 19 | 5,350,942 | 2.88407 | 28.151% | 2.77652 | 29.297% | 59.205% | 8,192 | 2.66784 | 29.602% | 85.369% | 2.18267 | 0.000718271 | 0.000689722 | 100.000% | 37.8351 | 31.0342 | 86.9821 | 267.278 |
+| 20 | 5,350,942 | 2.87762 | 28.214% | 2.82788 | 28.755% | 58.465% | 8,192 | 2.61563 | 28.552% | 78.143% | 2.43437 | 0.000689721 | 0.000660439 | 100.000% | 38.5112 | 31.2772 | 88.684 | 6704.75 |
+| 21 | 5,350,942 | 2.87054 | 28.303% | 2.77119 | 29.192% | 59.357% | 8,192 | 2.59115 | 29.626% | 81.246% | 2.37185 | 0.000660438 | 0.000630539 | 100.000% | 38.9626 | 31.7572 | 89.8123 | 351.087 |
+| 22 | 5,350,942 | 2.86267 | 28.356% | 2.77421 | 29.003% | 59.077% | 8,192 | 2.63203 | 29.199% | 82.936% | 2.34253 | 0.000630538 | 0.000600141 | 100.000% | 39.2119 | 32.1204 | 90.154 | 1962.97 |
+| 23 | 5,350,942 | 2.85754 | 28.427% | 2.75102 | 29.117% | 59.327% | 8,192 | 2.61459 | 29.810% | 83.675% | 2.31059 | 0.00060014 | 0.000569365 | 100.000% | 40.3137 | 32.9014 | 92.9672 | 352.804 |
+| 24 | 5,350,942 | 2.85224 | 28.500% | 2.74846 | 29.420% | 59.547% | 8,192 | 2.62076 | 29.089% | 83.180% | 2.30961 | 0.000569365 | 0.000538334 | 100.000% | 42.2631 | 34.2722 | 97.3068 | 10321.1 |
+| 25 | 5,350,942 | 2.84524 | 28.593% | 2.78571 | 29.301% | 59.485% | 8,192 | 2.71852 | 29.370% | 87.956% | 2.11338 | 0.000538334 | 0.000507171 | 100.000% | 43.6587 | 35.7411 | 101.357 | 266.255 |
+| 26 | 5,350,942 | 2.84199 | 28.621% | 2.73529 | 29.369% | 59.519% | 8,192 | 2.60833 | 29.492% | 84.477% | 2.28363 | 0.00050717 | 0.000475999 | 100.000% | 47.264 | 38.6978 | 110.381 | 320.986 |
+| 27 | 5,350,942 | 2.83916 | 28.663% | 2.76009 | 29.129% | 59.403% | 8,192 | 2.62335 | 29.724% | 83.715% | 2.36524 | 0.000475998 | 0.000444942 | 100.000% | 51.3759 | 41.937 | 120.608 | 427.103 |
+| 28 | 5,350,942 | 2.83699 | 28.690% | 2.81837 | 29.193% | 59.285% | 8,192 | 2.76609 | 29.028% | 89.706% | 2.02415 | 0.000444941 | 0.000414124 | 100.000% | 55.7335 | 45.2256 | 132.254 | 8378.89 |
+| 29 | 5,350,942 | 2.83407 | 28.759% | 2.72811 | 29.510% | 59.808% | 8,192 | 2.59054 | 29.724% | 83.950% | 2.32576 | 0.000414123 | 0.000383666 | 100.000% | 58.9424 | 48.1185 | 140.311 | 817.55 |
+| 30 | 5,350,942 | 2.83369 | 28.870% | 2.95623 | 28.979% | 58.868% | 8,192 | 2.93188 | 28.931% | 91.908% | 1.85532 | 0.000383665 | 0.000353689 | 100.000% | 61.2608 | 48.4843 | 141.183 | 65786.4 |
+| 31 | 5,350,942 | 2.81317 | 28.996% | 2.81262 | 29.086% | 59.191% | 8,192 | 2.55514 | 29.712% | 76.121% | 2.52104 | 0.000353689 | 0.000324313 | 100.000% | 59.1465 | 48.0638 | 140.424 | 507.917 |
+| 32 | 5,350,942 | 2.80361 | 29.096% | 2.87347 | 28.967% | 59.154% | 8,192 | 2.83964 | 29.688% | 91.374% | 1.98024 | 0.000324313 | 0.000295655 | 100.000% | 59.8835 | 48.4104 | 142.02 | 497.128 |
+| 33 | 5,350,942 | 2.79175 | 29.229% | 2.75544 | 29.632% | 60.054% | 8,192 | 2.53708 | 29.858% | 78.818% | 2.45716 | 0.000295654 | 0.000267827 | 100.000% | 59.2633 | 48.3464 | 138.897 | 687.041 |
+| 34 | 5,350,942 | 2.78006 | 29.365% | 2.74279 | 29.717% | 60.190% | 8,192 | 2.6729 | 29.956% | 88.872% | 2.14538 | 0.000267826 | 0.00024094 | 100.000% | 58.9973 | 48.1897 | 137.184 | 378.319 |
+| 35 | 5,350,942 | 2.76793 | 29.483% | 2.72519 | 30.032% | 60.588% | 8,192 | 2.53944 | 30.579% | 80.451% | 2.45553 | 0.000240939 | 0.000215101 | 100.000% | 58.6126 | 48.2324 | 134.497 | 325.549 |
+| 36 | 5,350,942 | 2.75612 | 29.612% | 2.6836 | 30.222% | 60.949% | 8,192 | 2.57881 | 30.078% | 86.927% | 2.22165 | 0.000215101 | 0.000190413 | 100.000% | 57.5625 | 47.3353 | 132.524 | 331.889 |
+| 37 | 5,350,942 | 2.74697 | 29.716% | 2.68157 | 30.313% | 61.013% | 8,192 | 2.56852 | 30.383% | 85.544% | 2.27225 | 0.000190412 | 0.000166973 | 100.000% | 57.6624 | 47.1488 | 132.3 | 450.591 |
+| 38 | 5,350,942 | 2.73769 | 29.826% | 2.69308 | 30.388% | 61.018% | 8,192 | 2.62412 | 30.225% | 88.773% | 2.13495 | 0.000166972 | 0.000144875 | 100.000% | 57.7071 | 47.581 | 130.163 | 581.525 |
+| 39 | 5,350,942 | 2.72818 | 29.957% | 2.7645 | 29.873% | 60.337% | 8,192 | 2.72942 | 29.395% | 91.059% | 2.02525 | 0.000144874 | 0.000124206 | 100.000% | 57.6026 | 47.2137 | 129.16 | 498.939 |
+| 40 | 5,350,942 | 2.71898 | 30.070% | 2.65946 | 30.655% | 61.422% | 8,192 | 2.55479 | 30.762% | 86.673% | 2.23446 | 0.000124205 | 0.000105048 | 100.000% | 57.5518 | 47.6271 | 127.897 | 805.183 |
+| 41 | 5,350,942 | 2.70972 | 30.165% | 2.6552 | 30.627% | 61.538% | 8,192 | 2.56952 | 30.151% | 88.024% | 2.17763 | 0.000105047 | 8.7477e-05 | 100.000% | 56.9999 | 47.2313 | 126.195 | 1939.48 |
+| 42 | 5,350,942 | 2.70111 | 30.273% | 2.63729 | 30.810% | 61.820% | 8,192 | 2.52623 | 30.798% | 86.329% | 2.27153 | 8.74766e-05 | 7.15633e-05 | 100.000% | 56.7789 | 46.9293 | 125.182 | 3691.45 |
+| 43 | 5,350,942 | 2.69326 | 30.363% | 2.63531 | 30.872% | 61.728% | 8,192 | 2.54454 | 30.933% | 87.529% | 2.21227 | 7.15629e-05 | 5.73698e-05 | 100.000% | 56.8442 | 47.278 | 124.352 | 723.349 |
+| 44 | 5,350,942 | 2.68573 | 30.447% | 2.63608 | 30.915% | 61.856% | 8,192 | 2.55642 | 30.969% | 88.272% | 2.18515 | 5.73695e-05 | 4.49527e-05 | 100.000% | 55.8539 | 46.3577 | 120.75 | 3088.47 |
+| 45 | 5,350,942 | 2.67903 | 30.527% | 2.62353 | 31.062% | 62.008% | 8,192 | 2.52395 | 31.445% | 87.207% | 2.23333 | 4.49524e-05 | 3.43614e-05 | 100.000% | 55.8181 | 46.56 | 120.174 | 432.483 |
+| 46 | 5,350,942 | 2.67272 | 30.611% | 2.62847 | 31.075% | 62.031% | 8,192 | 2.5492 | 31.360% | 88.431% | 2.1689 | 3.43611e-05 | 2.56378e-05 | 100.000% | 54.8478 | 45.78 | 116.949 | 1226.16 |
+| 47 | 5,350,942 | 2.66869 | 30.650% | 2.61718 | 31.121% | 62.124% | 8,192 | 2.51033 | 31.287% | 86.461% | 2.26933 | 2.56377e-05 | 1.88167e-05 | 100.000% | 54.2211 | 45.2744 | 114.026 | 1710.8 |
+| 48 | 5,350,942 | 2.66387 | 30.710% | 2.61503 | 31.145% | 62.147% | 8,192 | 2.51218 | 31.311% | 86.662% | 2.2572 | 1.88166e-05 | 1.3925e-05 | 100.000% | 53.4737 | 44.7132 | 112.218 | 722.512 |
+| 49 | 5,350,942 | 2.66135 | 30.750% | 2.61368 | 31.153% | 62.190% | 8,192 | 2.51455 | 31.519% | 86.983% | 2.24923 | 1.39249e-05 | 1.09822e-05 | 100.000% | 53.2512 | 44.7426 | 111.486 | 739.91 |
+| 50 | 5,350,942 | 2.67059 | 30.767% | 2.6136 | 31.154% | 62.196% | 8,192 | 2.5089 | 31.262% | 86.609% | 2.26085 | 1.09822e-05 | 1e-05 | 100.000% | 54.8592 | 44.631 | 110.343 | 69942.7 |
+
+#### Additional probe, timing, and health findings at every checkpoint
+
+| Epoch/update | Metric | Value (fractions unless stated) |
+| --- | --- | --- |
+| 1 | probe.positions | 8,192 |
+| 1 | probe.temperature | 1 |
+| 1 | probe.raw_nll | 2.90238 |
+| 1 | probe.raw_top1 | 0.277222 |
+| 1 | probe.legal_moves.legal_probability_mass | 0.834015 |
+| 1 | probe.legal_moves.legal_nll | 2.7049 |
+| 1 | probe.legal_moves.legal_top1 | 0.280762 |
+| 1 | probe.legal_moves.legal_entropy | 2.25693 |
+| 1 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00366211 |
+| 1 | probe.legal_moves.probability_mass_removed_by_safety | 0.00759131 |
+| 1 | train_seconds | 262.273 |
+| 1 | validation_seconds | 6.87925 |
+| 1 | diagnostics_seconds | 2.45655 |
+| 2 | probe.positions | 8,192 |
+| 2 | probe.temperature | 1 |
+| 2 | probe.raw_nll | 2.89294 |
+| 2 | probe.raw_top1 | 0.272949 |
+| 2 | probe.legal_moves.legal_probability_mass | 0.823707 |
+| 2 | probe.legal_moves.legal_nll | 2.68095 |
+| 2 | probe.legal_moves.legal_top1 | 0.276245 |
+| 2 | probe.legal_moves.legal_entropy | 2.30021 |
+| 2 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00476074 |
+| 2 | probe.legal_moves.probability_mass_removed_by_safety | 0.00779847 |
+| 2 | train_seconds | 260.7 |
+| 2 | validation_seconds | 6.71564 |
+| 2 | diagnostics_seconds | 2.07876 |
+| 3 | probe.positions | 8,192 |
+| 3 | probe.temperature | 1 |
+| 3 | probe.raw_nll | 2.89613 |
+| 3 | probe.raw_top1 | 0.279053 |
+| 3 | probe.legal_moves.legal_probability_mass | 0.826879 |
+| 3 | probe.legal_moves.legal_nll | 2.68873 |
+| 3 | probe.legal_moves.legal_top1 | 0.282104 |
+| 3 | probe.legal_moves.legal_entropy | 2.28339 |
+| 3 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00317383 |
+| 3 | probe.legal_moves.probability_mass_removed_by_safety | 0.00807487 |
+| 3 | train_seconds | 251.704 |
+| 3 | validation_seconds | 6.64974 |
+| 3 | diagnostics_seconds | 2.08782 |
+| 4 | probe.positions | 8,192 |
+| 4 | probe.temperature | 1 |
+| 4 | probe.raw_nll | 2.88641 |
+| 4 | probe.raw_top1 | 0.28418 |
+| 4 | probe.legal_moves.legal_probability_mass | 0.804651 |
+| 4 | probe.legal_moves.legal_nll | 2.64833 |
+| 4 | probe.legal_moves.legal_top1 | 0.287476 |
+| 4 | probe.legal_moves.legal_entropy | 2.34122 |
+| 4 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00317383 |
+| 4 | probe.legal_moves.probability_mass_removed_by_safety | 0.00752246 |
+| 4 | train_seconds | 263.501 |
+| 4 | validation_seconds | 6.77823 |
+| 4 | diagnostics_seconds | 2.10465 |
+| 5 | probe.positions | 8,192 |
+| 5 | probe.temperature | 1 |
+| 5 | probe.raw_nll | 2.92479 |
+| 5 | probe.raw_top1 | 0.273682 |
+| 5 | probe.legal_moves.legal_probability_mass | 0.851628 |
+| 5 | probe.legal_moves.legal_nll | 2.75019 |
+| 5 | probe.legal_moves.legal_top1 | 0.276245 |
+| 5 | probe.legal_moves.legal_entropy | 2.18844 |
+| 5 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00195312 |
+| 5 | probe.legal_moves.probability_mass_removed_by_safety | 0.00670161 |
+| 5 | train_seconds | 252.584 |
+| 5 | validation_seconds | 6.83135 |
+| 5 | diagnostics_seconds | 2.1269 |
+| 6 | probe.positions | 8,192 |
+| 6 | probe.temperature | 1 |
+| 6 | probe.raw_nll | 2.88318 |
+| 6 | probe.raw_top1 | 0.283203 |
+| 6 | probe.legal_moves.legal_probability_mass | 0.831542 |
+| 6 | probe.legal_moves.legal_nll | 2.68138 |
+| 6 | probe.legal_moves.legal_top1 | 0.285767 |
+| 6 | probe.legal_moves.legal_entropy | 2.25971 |
+| 6 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00170898 |
+| 6 | probe.legal_moves.probability_mass_removed_by_safety | 0.00683842 |
+| 6 | train_seconds | 259.915 |
+| 6 | validation_seconds | 6.82154 |
+| 6 | diagnostics_seconds | 2.11757 |
+| 7 | probe.positions | 8,192 |
+| 7 | probe.temperature | 1 |
+| 7 | probe.raw_nll | 3.00121 |
+| 7 | probe.raw_top1 | 0.277954 |
+| 7 | probe.legal_moves.legal_probability_mass | 0.881961 |
+| 7 | probe.legal_moves.legal_nll | 2.86541 |
+| 7 | probe.legal_moves.legal_top1 | 0.279785 |
+| 7 | probe.legal_moves.legal_entropy | 2.05218 |
+| 7 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00244141 |
+| 7 | probe.legal_moves.probability_mass_removed_by_safety | 0.00655198 |
+| 7 | train_seconds | 257.905 |
+| 7 | validation_seconds | 6.64464 |
+| 7 | diagnostics_seconds | 2.08977 |
+| 8 | probe.positions | 8,192 |
+| 8 | probe.temperature | 1 |
+| 8 | probe.raw_nll | 2.89587 |
+| 8 | probe.raw_top1 | 0.275269 |
+| 8 | probe.legal_moves.legal_probability_mass | 0.849303 |
+| 8 | probe.legal_moves.legal_nll | 2.71751 |
+| 8 | probe.legal_moves.legal_top1 | 0.278076 |
+| 8 | probe.legal_moves.legal_entropy | 2.22073 |
+| 8 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00390625 |
+| 8 | probe.legal_moves.probability_mass_removed_by_safety | 0.00781192 |
+| 8 | train_seconds | 255.581 |
+| 8 | validation_seconds | 6.66433 |
+| 8 | diagnostics_seconds | 2.05849 |
+| 9 | probe.positions | 8,192 |
+| 9 | probe.temperature | 1 |
+| 9 | probe.raw_nll | 2.88756 |
+| 9 | probe.raw_top1 | 0.282837 |
+| 9 | probe.legal_moves.legal_probability_mass | 0.792696 |
+| 9 | probe.legal_moves.legal_nll | 2.62926 |
+| 9 | probe.legal_moves.legal_top1 | 0.286499 |
+| 9 | probe.legal_moves.legal_entropy | 2.43042 |
+| 9 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00256348 |
+| 9 | probe.legal_moves.probability_mass_removed_by_safety | 0.00842798 |
+| 9 | train_seconds | 253.968 |
+| 9 | validation_seconds | 6.64177 |
+| 9 | diagnostics_seconds | 2.08257 |
+| 10 | probe.positions | 8,192 |
+| 10 | probe.temperature | 1 |
+| 10 | probe.raw_nll | 2.89379 |
+| 10 | probe.raw_top1 | 0.282227 |
+| 10 | probe.legal_moves.legal_probability_mass | 0.821954 |
+| 10 | probe.legal_moves.legal_nll | 2.67916 |
+| 10 | probe.legal_moves.legal_top1 | 0.285889 |
+| 10 | probe.legal_moves.legal_entropy | 2.31201 |
+| 10 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00219727 |
+| 10 | probe.legal_moves.probability_mass_removed_by_safety | 0.0075451 |
+| 10 | train_seconds | 253.603 |
+| 10 | validation_seconds | 6.77701 |
+| 10 | diagnostics_seconds | 2.13354 |
+| 11 | probe.positions | 8,192 |
+| 11 | probe.temperature | 1 |
+| 11 | probe.raw_nll | 2.88574 |
+| 11 | probe.raw_top1 | 0.278931 |
+| 11 | probe.legal_moves.legal_probability_mass | 0.824256 |
+| 11 | probe.legal_moves.legal_nll | 2.67454 |
+| 11 | probe.legal_moves.legal_top1 | 0.282104 |
+| 11 | probe.legal_moves.legal_entropy | 2.33234 |
+| 11 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00402832 |
+| 11 | probe.legal_moves.probability_mass_removed_by_safety | 0.00737627 |
+| 11 | train_seconds | 253.689 |
+| 11 | validation_seconds | 6.63904 |
+| 11 | diagnostics_seconds | 2.09027 |
+| 12 | probe.positions | 8,192 |
+| 12 | probe.temperature | 1 |
+| 12 | probe.raw_nll | 2.92013 |
+| 12 | probe.raw_top1 | 0.275635 |
+| 12 | probe.legal_moves.legal_probability_mass | 0.828231 |
+| 12 | probe.legal_moves.legal_nll | 2.7143 |
+| 12 | probe.legal_moves.legal_top1 | 0.278442 |
+| 12 | probe.legal_moves.legal_entropy | 2.31477 |
+| 12 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00305176 |
+| 12 | probe.legal_moves.probability_mass_removed_by_safety | 0.00767084 |
+| 12 | train_seconds | 253.762 |
+| 12 | validation_seconds | 6.67574 |
+| 12 | diagnostics_seconds | 2.08203 |
+| 13 | probe.positions | 8,192 |
+| 13 | probe.temperature | 1 |
+| 13 | probe.raw_nll | 3.13655 |
+| 13 | probe.raw_top1 | 0.271484 |
+| 13 | probe.legal_moves.legal_probability_mass | 0.906867 |
+| 13 | probe.legal_moves.legal_nll | 3.03103 |
+| 13 | probe.legal_moves.legal_top1 | 0.273682 |
+| 13 | probe.legal_moves.legal_entropy | 1.9324 |
+| 13 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00280762 |
+| 13 | probe.legal_moves.probability_mass_removed_by_safety | 0.00606066 |
+| 13 | train_seconds | 252.969 |
+| 13 | validation_seconds | 6.66212 |
+| 13 | diagnostics_seconds | 2.10801 |
+| 14 | probe.positions | 8,192 |
+| 14 | probe.temperature | 1 |
+| 14 | probe.raw_nll | 2.88392 |
+| 14 | probe.raw_top1 | 0.279663 |
+| 14 | probe.legal_moves.legal_probability_mass | 0.85487 |
+| 14 | probe.legal_moves.legal_nll | 2.71403 |
+| 14 | probe.legal_moves.legal_top1 | 0.283081 |
+| 14 | probe.legal_moves.legal_entropy | 2.19428 |
+| 14 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00317383 |
+| 14 | probe.legal_moves.probability_mass_removed_by_safety | 0.00717927 |
+| 14 | train_seconds | 268.243 |
+| 14 | validation_seconds | 7.05274 |
+| 14 | diagnostics_seconds | 2.1207 |
+| 15 | probe.positions | 8,192 |
+| 15 | probe.temperature | 1 |
+| 15 | probe.raw_nll | 2.87297 |
+| 15 | probe.raw_top1 | 0.282471 |
+| 15 | probe.legal_moves.legal_probability_mass | 0.793108 |
+| 15 | probe.legal_moves.legal_nll | 2.61755 |
+| 15 | probe.legal_moves.legal_top1 | 0.287354 |
+| 15 | probe.legal_moves.legal_entropy | 2.41007 |
+| 15 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00231934 |
+| 15 | probe.legal_moves.probability_mass_removed_by_safety | 0.00788282 |
+| 15 | train_seconds | 251.943 |
+| 15 | validation_seconds | 6.63506 |
+| 15 | diagnostics_seconds | 2.10734 |
+| 16 | probe.positions | 8,192 |
+| 16 | probe.temperature | 1 |
+| 16 | probe.raw_nll | 2.89667 |
+| 16 | probe.raw_top1 | 0.285767 |
+| 16 | probe.legal_moves.legal_probability_mass | 0.772296 |
+| 16 | probe.legal_moves.legal_nll | 2.60977 |
+| 16 | probe.legal_moves.legal_top1 | 0.290283 |
+| 16 | probe.legal_moves.legal_entropy | 2.44214 |
+| 16 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00195312 |
+| 16 | probe.legal_moves.probability_mass_removed_by_safety | 0.00767752 |
+| 16 | train_seconds | 253.162 |
+| 16 | validation_seconds | 6.72398 |
+| 16 | diagnostics_seconds | 2.14707 |
+| 17 | probe.positions | 8,192 |
+| 17 | probe.temperature | 1 |
+| 17 | probe.raw_nll | 2.85201 |
+| 17 | probe.raw_top1 | 0.291626 |
+| 17 | probe.legal_moves.legal_probability_mass | 0.836802 |
+| 17 | probe.legal_moves.legal_nll | 2.65815 |
+| 17 | probe.legal_moves.legal_top1 | 0.293457 |
+| 17 | probe.legal_moves.legal_entropy | 2.26283 |
+| 17 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00268555 |
+| 17 | probe.legal_moves.probability_mass_removed_by_safety | 0.00700578 |
+| 17 | train_seconds | 252.321 |
+| 17 | validation_seconds | 6.68132 |
+| 17 | diagnostics_seconds | 2.10089 |
+| 18 | probe.positions | 8,192 |
+| 18 | probe.temperature | 1 |
+| 18 | probe.raw_nll | 2.86751 |
+| 18 | probe.raw_top1 | 0.282349 |
+| 18 | probe.legal_moves.legal_probability_mass | 0.851958 |
+| 18 | probe.legal_moves.legal_nll | 2.69322 |
+| 18 | probe.legal_moves.legal_top1 | 0.285278 |
+| 18 | probe.legal_moves.legal_entropy | 2.22432 |
+| 18 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00256348 |
+| 18 | probe.legal_moves.probability_mass_removed_by_safety | 0.00673783 |
+| 18 | train_seconds | 254.165 |
+| 18 | validation_seconds | 6.70548 |
+| 18 | diagnostics_seconds | 2.0889 |
+| 19 | probe.positions | 8,192 |
+| 19 | probe.temperature | 1 |
+| 19 | probe.raw_nll | 2.84052 |
+| 19 | probe.raw_top1 | 0.293457 |
+| 19 | probe.legal_moves.legal_probability_mass | 0.853693 |
+| 19 | probe.legal_moves.legal_nll | 2.66784 |
+| 19 | probe.legal_moves.legal_top1 | 0.296021 |
+| 19 | probe.legal_moves.legal_entropy | 2.18267 |
+| 19 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00268555 |
+| 19 | probe.legal_moves.probability_mass_removed_by_safety | 0.00612811 |
+| 19 | train_seconds | 252.401 |
+| 19 | validation_seconds | 6.67256 |
+| 19 | diagnostics_seconds | 2.08958 |
+| 20 | probe.positions | 8,192 |
+| 20 | probe.temperature | 1 |
+| 20 | probe.raw_nll | 2.89028 |
+| 20 | probe.raw_top1 | 0.280518 |
+| 20 | probe.legal_moves.legal_probability_mass | 0.78143 |
+| 20 | probe.legal_moves.legal_nll | 2.61563 |
+| 20 | probe.legal_moves.legal_top1 | 0.285522 |
+| 20 | probe.legal_moves.legal_entropy | 2.43437 |
+| 20 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00280762 |
+| 20 | probe.legal_moves.probability_mass_removed_by_safety | 0.00737191 |
+| 20 | train_seconds | 249.644 |
+| 20 | validation_seconds | 6.68461 |
+| 20 | diagnostics_seconds | 2.06457 |
+| 21 | probe.positions | 8,192 |
+| 21 | probe.temperature | 1 |
+| 21 | probe.raw_nll | 2.82159 |
+| 21 | probe.raw_top1 | 0.293091 |
+| 21 | probe.legal_moves.legal_probability_mass | 0.812461 |
+| 21 | probe.legal_moves.legal_nll | 2.59115 |
+| 21 | probe.legal_moves.legal_top1 | 0.296265 |
+| 21 | probe.legal_moves.legal_entropy | 2.37185 |
+| 21 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.0020752 |
+| 21 | probe.legal_moves.probability_mass_removed_by_safety | 0.00729919 |
+| 21 | train_seconds | 253.625 |
+| 21 | validation_seconds | 6.72971 |
+| 21 | diagnostics_seconds | 2.10897 |
+| 22 | probe.positions | 8,192 |
+| 22 | probe.temperature | 1 |
+| 22 | probe.raw_nll | 2.83745 |
+| 22 | probe.raw_top1 | 0.289551 |
+| 22 | probe.legal_moves.legal_probability_mass | 0.829357 |
+| 22 | probe.legal_moves.legal_nll | 2.63203 |
+| 22 | probe.legal_moves.legal_top1 | 0.291992 |
+| 22 | probe.legal_moves.legal_entropy | 2.34253 |
+| 22 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00280762 |
+| 22 | probe.legal_moves.probability_mass_removed_by_safety | 0.00757458 |
+| 22 | train_seconds | 253.645 |
+| 22 | validation_seconds | 6.68318 |
+| 22 | diagnostics_seconds | 2.08158 |
+| 23 | probe.positions | 8,192 |
+| 23 | probe.temperature | 1 |
+| 23 | probe.raw_nll | 2.8094 |
+| 23 | probe.raw_top1 | 0.29541 |
+| 23 | probe.legal_moves.legal_probability_mass | 0.836746 |
+| 23 | probe.legal_moves.legal_nll | 2.61459 |
+| 23 | probe.legal_moves.legal_top1 | 0.298096 |
+| 23 | probe.legal_moves.legal_entropy | 2.31059 |
+| 23 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00280762 |
+| 23 | probe.legal_moves.probability_mass_removed_by_safety | 0.00752402 |
+| 23 | train_seconds | 254.355 |
+| 23 | validation_seconds | 6.66532 |
+| 23 | diagnostics_seconds | 2.11659 |
+| 24 | probe.positions | 8,192 |
+| 24 | probe.temperature | 1 |
+| 24 | probe.raw_nll | 2.82188 |
+| 24 | probe.raw_top1 | 0.288452 |
+| 24 | probe.legal_moves.legal_probability_mass | 0.831797 |
+| 24 | probe.legal_moves.legal_nll | 2.62076 |
+| 24 | probe.legal_moves.legal_top1 | 0.290894 |
+| 24 | probe.legal_moves.legal_entropy | 2.30961 |
+| 24 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00268555 |
+| 24 | probe.legal_moves.probability_mass_removed_by_safety | 0.00749375 |
+| 24 | train_seconds | 256.202 |
+| 24 | validation_seconds | 6.70582 |
+| 24 | diagnostics_seconds | 2.08169 |
+| 25 | probe.positions | 8,192 |
+| 25 | probe.temperature | 1 |
+| 25 | probe.raw_nll | 2.85749 |
+| 25 | probe.raw_top1 | 0.29126 |
+| 25 | probe.legal_moves.legal_probability_mass | 0.879563 |
+| 25 | probe.legal_moves.legal_nll | 2.71852 |
+| 25 | probe.legal_moves.legal_top1 | 0.293701 |
+| 25 | probe.legal_moves.legal_entropy | 2.11338 |
+| 25 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00231934 |
+| 25 | probe.legal_moves.probability_mass_removed_by_safety | 0.00607661 |
+| 25 | train_seconds | 251.047 |
+| 25 | validation_seconds | 6.71208 |
+| 25 | diagnostics_seconds | 2.10967 |
+| 26 | probe.positions | 8,192 |
+| 26 | probe.temperature | 1 |
+| 26 | probe.raw_nll | 2.79174 |
+| 26 | probe.raw_top1 | 0.292114 |
+| 26 | probe.legal_moves.legal_probability_mass | 0.844769 |
+| 26 | probe.legal_moves.legal_nll | 2.60833 |
+| 26 | probe.legal_moves.legal_top1 | 0.294922 |
+| 26 | probe.legal_moves.legal_entropy | 2.28363 |
+| 26 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00195312 |
+| 26 | probe.legal_moves.probability_mass_removed_by_safety | 0.00700653 |
+| 26 | train_seconds | 254.86 |
+| 26 | validation_seconds | 6.71781 |
+| 26 | diagnostics_seconds | 2.08951 |
+| 27 | probe.positions | 8,192 |
+| 27 | probe.temperature | 1 |
+| 27 | probe.raw_nll | 2.81834 |
+| 27 | probe.raw_top1 | 0.294067 |
+| 27 | probe.legal_moves.legal_probability_mass | 0.837149 |
+| 27 | probe.legal_moves.legal_nll | 2.62335 |
+| 27 | probe.legal_moves.legal_top1 | 0.297241 |
+| 27 | probe.legal_moves.legal_entropy | 2.36524 |
+| 27 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.0020752 |
+| 27 | probe.legal_moves.probability_mass_removed_by_safety | 0.0070604 |
+| 27 | train_seconds | 254.176 |
+| 27 | validation_seconds | 6.65701 |
+| 27 | diagnostics_seconds | 2.10353 |
+| 28 | probe.positions | 8,192 |
+| 28 | probe.temperature | 1 |
+| 28 | probe.raw_nll | 2.88306 |
+| 28 | probe.raw_top1 | 0.287231 |
+| 28 | probe.legal_moves.legal_probability_mass | 0.897057 |
+| 28 | probe.legal_moves.legal_nll | 2.76609 |
+| 28 | probe.legal_moves.legal_top1 | 0.290283 |
+| 28 | probe.legal_moves.legal_entropy | 2.02415 |
+| 28 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00231934 |
+| 28 | probe.legal_moves.probability_mass_removed_by_safety | 0.00590747 |
+| 28 | train_seconds | 255.13 |
+| 28 | validation_seconds | 7.1689 |
+| 28 | diagnostics_seconds | 2.15609 |
+| 29 | probe.positions | 8,192 |
+| 29 | probe.temperature | 1 |
+| 29 | probe.raw_nll | 2.78287 |
+| 29 | probe.raw_top1 | 0.294434 |
+| 29 | probe.legal_moves.legal_probability_mass | 0.839497 |
+| 29 | probe.legal_moves.legal_nll | 2.59054 |
+| 29 | probe.legal_moves.legal_top1 | 0.297241 |
+| 29 | probe.legal_moves.legal_entropy | 2.32576 |
+| 29 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00280762 |
+| 29 | probe.legal_moves.probability_mass_removed_by_safety | 0.00724764 |
+| 29 | train_seconds | 259.84 |
+| 29 | validation_seconds | 6.72462 |
+| 29 | diagnostics_seconds | 2.10475 |
+| 30 | probe.positions | 8,192 |
+| 30 | probe.temperature | 1 |
+| 30 | probe.raw_nll | 3.02289 |
+| 30 | probe.raw_top1 | 0.286987 |
+| 30 | probe.legal_moves.legal_probability_mass | 0.919075 |
+| 30 | probe.legal_moves.legal_nll | 2.93188 |
+| 30 | probe.legal_moves.legal_top1 | 0.289307 |
+| 30 | probe.legal_moves.legal_entropy | 1.85532 |
+| 30 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00195312 |
+| 30 | probe.legal_moves.probability_mass_removed_by_safety | 0.0052383 |
+| 30 | train_seconds | 261.484 |
+| 30 | validation_seconds | 6.73123 |
+| 30 | diagnostics_seconds | 2.07825 |
+| 31 | probe.positions | 8,192 |
+| 31 | probe.temperature | 1 |
+| 31 | probe.raw_nll | 2.85922 |
+| 31 | probe.raw_top1 | 0.292847 |
+| 31 | probe.legal_moves.legal_probability_mass | 0.761205 |
+| 31 | probe.legal_moves.legal_nll | 2.55514 |
+| 31 | probe.legal_moves.legal_top1 | 0.297119 |
+| 31 | probe.legal_moves.legal_entropy | 2.52104 |
+| 31 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.0032959 |
+| 31 | probe.legal_moves.probability_mass_removed_by_safety | 0.00793395 |
+| 31 | train_seconds | 256.99 |
+| 31 | validation_seconds | 6.75584 |
+| 31 | diagnostics_seconds | 2.1036 |
+| 32 | probe.positions | 8,192 |
+| 32 | probe.temperature | 1 |
+| 32 | probe.raw_nll | 2.93628 |
+| 32 | probe.raw_top1 | 0.29541 |
+| 32 | probe.legal_moves.legal_probability_mass | 0.913745 |
+| 32 | probe.legal_moves.legal_nll | 2.83964 |
+| 32 | probe.legal_moves.legal_top1 | 0.296875 |
+| 32 | probe.legal_moves.legal_entropy | 1.98024 |
+| 32 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00244141 |
+| 32 | probe.legal_moves.probability_mass_removed_by_safety | 0.00549564 |
+| 32 | train_seconds | 256.238 |
+| 32 | validation_seconds | 6.7121 |
+| 32 | diagnostics_seconds | 2.04688 |
+| 33 | probe.positions | 8,192 |
+| 33 | probe.temperature | 1 |
+| 33 | probe.raw_nll | 2.79933 |
+| 33 | probe.raw_top1 | 0.294556 |
+| 33 | probe.legal_moves.legal_probability_mass | 0.788176 |
+| 33 | probe.legal_moves.legal_nll | 2.53708 |
+| 33 | probe.legal_moves.legal_top1 | 0.298584 |
+| 33 | probe.legal_moves.legal_entropy | 2.45716 |
+| 33 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00183105 |
+| 33 | probe.legal_moves.probability_mass_removed_by_safety | 0.00750783 |
+| 33 | train_seconds | 255.367 |
+| 33 | validation_seconds | 6.71295 |
+| 33 | diagnostics_seconds | 2.08171 |
+| 34 | probe.positions | 8,192 |
+| 34 | probe.temperature | 1 |
+| 34 | probe.raw_nll | 2.80017 |
+| 34 | probe.raw_top1 | 0.297852 |
+| 34 | probe.legal_moves.legal_probability_mass | 0.888724 |
+| 34 | probe.legal_moves.legal_nll | 2.6729 |
+| 34 | probe.legal_moves.legal_top1 | 0.299561 |
+| 34 | probe.legal_moves.legal_entropy | 2.14538 |
+| 34 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00268555 |
+| 34 | probe.legal_moves.probability_mass_removed_by_safety | 0.00660174 |
+| 34 | train_seconds | 275.805 |
+| 34 | validation_seconds | 6.69643 |
+| 34 | diagnostics_seconds | 2.09854 |
+| 35 | probe.positions | 8,192 |
+| 35 | probe.temperature | 1 |
+| 35 | probe.raw_nll | 2.77749 |
+| 35 | probe.raw_top1 | 0.303101 |
+| 35 | probe.legal_moves.legal_probability_mass | 0.804514 |
+| 35 | probe.legal_moves.legal_nll | 2.53944 |
+| 35 | probe.legal_moves.legal_top1 | 0.305786 |
+| 35 | probe.legal_moves.legal_entropy | 2.45553 |
+| 35 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00183105 |
+| 35 | probe.legal_moves.probability_mass_removed_by_safety | 0.00714006 |
+| 35 | train_seconds | 256.444 |
+| 35 | validation_seconds | 6.67332 |
+| 35 | diagnostics_seconds | 2.08362 |
+| 36 | probe.positions | 8,192 |
+| 36 | probe.temperature | 1 |
+| 36 | probe.raw_nll | 2.73014 |
+| 36 | probe.raw_top1 | 0.298096 |
+| 36 | probe.legal_moves.legal_probability_mass | 0.869268 |
+| 36 | probe.legal_moves.legal_nll | 2.57881 |
+| 36 | probe.legal_moves.legal_top1 | 0.300781 |
+| 36 | probe.legal_moves.legal_entropy | 2.22165 |
+| 36 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00134277 |
+| 36 | probe.legal_moves.probability_mass_removed_by_safety | 0.00597968 |
+| 36 | train_seconds | 255.038 |
+| 36 | validation_seconds | 6.68598 |
+| 36 | diagnostics_seconds | 2.07367 |
+| 37 | probe.positions | 8,192 |
+| 37 | probe.temperature | 1 |
+| 37 | probe.raw_nll | 2.73809 |
+| 37 | probe.raw_top1 | 0.301147 |
+| 37 | probe.legal_moves.legal_probability_mass | 0.85544 |
+| 37 | probe.legal_moves.legal_nll | 2.56852 |
+| 37 | probe.legal_moves.legal_top1 | 0.303833 |
+| 37 | probe.legal_moves.legal_entropy | 2.27225 |
+| 37 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00195312 |
+| 37 | probe.legal_moves.probability_mass_removed_by_safety | 0.00657318 |
+| 37 | train_seconds | 270.985 |
+| 37 | validation_seconds | 6.67451 |
+| 37 | diagnostics_seconds | 2.07786 |
+| 38 | probe.positions | 8,192 |
+| 38 | probe.temperature | 1 |
+| 38 | probe.raw_nll | 2.75188 |
+| 38 | probe.raw_top1 | 0.300171 |
+| 38 | probe.legal_moves.legal_probability_mass | 0.887728 |
+| 38 | probe.legal_moves.legal_nll | 2.62412 |
+| 38 | probe.legal_moves.legal_top1 | 0.302246 |
+| 38 | probe.legal_moves.legal_entropy | 2.13495 |
+| 38 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00219727 |
+| 38 | probe.legal_moves.probability_mass_removed_by_safety | 0.00571243 |
+| 38 | train_seconds | 254.263 |
+| 38 | validation_seconds | 6.75126 |
+| 38 | diagnostics_seconds | 2.09034 |
+| 39 | probe.positions | 8,192 |
+| 39 | probe.temperature | 1 |
+| 39 | probe.raw_nll | 2.82939 |
+| 39 | probe.raw_top1 | 0.291504 |
+| 39 | probe.legal_moves.legal_probability_mass | 0.910588 |
+| 39 | probe.legal_moves.legal_nll | 2.72942 |
+| 39 | probe.legal_moves.legal_top1 | 0.293945 |
+| 39 | probe.legal_moves.legal_entropy | 2.02525 |
+| 39 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00134277 |
+| 39 | probe.legal_moves.probability_mass_removed_by_safety | 0.00562444 |
+| 39 | train_seconds | 254.455 |
+| 39 | validation_seconds | 5.65708 |
+| 39 | diagnostics_seconds | 1.76718 |
+| 40 | probe.positions | 8,192 |
+| 40 | probe.temperature | 1 |
+| 40 | probe.raw_nll | 2.70865 |
+| 40 | probe.raw_top1 | 0.305542 |
+| 40 | probe.legal_moves.legal_probability_mass | 0.866733 |
+| 40 | probe.legal_moves.legal_nll | 2.55479 |
+| 40 | probe.legal_moves.legal_top1 | 0.307617 |
+| 40 | probe.legal_moves.legal_entropy | 2.23446 |
+| 40 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.0012207 |
+| 40 | probe.legal_moves.probability_mass_removed_by_safety | 0.00563268 |
+| 40 | train_seconds | 254.713 |
+| 40 | validation_seconds | 6.65746 |
+| 40 | diagnostics_seconds | 2.05592 |
+| 41 | probe.positions | 8,192 |
+| 41 | probe.temperature | 1 |
+| 41 | probe.raw_nll | 2.70708 |
+| 41 | probe.raw_top1 | 0.299927 |
+| 41 | probe.legal_moves.legal_probability_mass | 0.880237 |
+| 41 | probe.legal_moves.legal_nll | 2.56952 |
+| 41 | probe.legal_moves.legal_top1 | 0.301514 |
+| 41 | probe.legal_moves.legal_entropy | 2.17763 |
+| 41 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.0012207 |
+| 41 | probe.legal_moves.probability_mass_removed_by_safety | 0.00554504 |
+| 41 | train_seconds | 257.738 |
+| 41 | validation_seconds | 6.68644 |
+| 41 | diagnostics_seconds | 2.15007 |
+| 42 | probe.positions | 8,192 |
+| 42 | probe.temperature | 1 |
+| 42 | probe.raw_nll | 2.68471 |
+| 42 | probe.raw_top1 | 0.305298 |
+| 42 | probe.legal_moves.legal_probability_mass | 0.863288 |
+| 42 | probe.legal_moves.legal_nll | 2.52623 |
+| 42 | probe.legal_moves.legal_top1 | 0.307983 |
+| 42 | probe.legal_moves.legal_entropy | 2.27153 |
+| 42 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00195312 |
+| 42 | probe.legal_moves.probability_mass_removed_by_safety | 0.00611702 |
+| 42 | train_seconds | 256.637 |
+| 42 | validation_seconds | 6.71794 |
+| 42 | diagnostics_seconds | 2.07469 |
+| 43 | probe.positions | 8,192 |
+| 43 | probe.temperature | 1 |
+| 43 | probe.raw_nll | 2.68716 |
+| 43 | probe.raw_top1 | 0.306885 |
+| 43 | probe.legal_moves.legal_probability_mass | 0.875292 |
+| 43 | probe.legal_moves.legal_nll | 2.54454 |
+| 43 | probe.legal_moves.legal_top1 | 0.309326 |
+| 43 | probe.legal_moves.legal_entropy | 2.21227 |
+| 43 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00170898 |
+| 43 | probe.legal_moves.probability_mass_removed_by_safety | 0.00591571 |
+| 43 | train_seconds | 268.909 |
+| 43 | validation_seconds | 6.72482 |
+| 43 | diagnostics_seconds | 2.1486 |
+| 44 | probe.positions | 8,192 |
+| 44 | probe.temperature | 1 |
+| 44 | probe.raw_nll | 2.68999 |
+| 44 | probe.raw_top1 | 0.307373 |
+| 44 | probe.legal_moves.legal_probability_mass | 0.882716 |
+| 44 | probe.legal_moves.legal_nll | 2.55642 |
+| 44 | probe.legal_moves.legal_top1 | 0.309692 |
+| 44 | probe.legal_moves.legal_entropy | 2.18515 |
+| 44 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00146484 |
+| 44 | probe.legal_moves.probability_mass_removed_by_safety | 0.00548383 |
+| 44 | train_seconds | 257.277 |
+| 44 | validation_seconds | 6.74261 |
+| 44 | diagnostics_seconds | 2.09627 |
+| 45 | probe.positions | 8,192 |
+| 45 | probe.temperature | 1 |
+| 45 | probe.raw_nll | 2.67059 |
+| 45 | probe.raw_top1 | 0.312134 |
+| 45 | probe.legal_moves.legal_probability_mass | 0.872072 |
+| 45 | probe.legal_moves.legal_nll | 2.52395 |
+| 45 | probe.legal_moves.legal_top1 | 0.314453 |
+| 45 | probe.legal_moves.legal_entropy | 2.23333 |
+| 45 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00170898 |
+| 45 | probe.legal_moves.probability_mass_removed_by_safety | 0.00574959 |
+| 45 | train_seconds | 265.856 |
+| 45 | validation_seconds | 6.67491 |
+| 45 | diagnostics_seconds | 2.08309 |
+| 46 | probe.positions | 8,192 |
+| 46 | probe.temperature | 1 |
+| 46 | probe.raw_nll | 2.6808 |
+| 46 | probe.raw_top1 | 0.310669 |
+| 46 | probe.legal_moves.legal_probability_mass | 0.884314 |
+| 46 | probe.legal_moves.legal_nll | 2.5492 |
+| 46 | probe.legal_moves.legal_top1 | 0.313599 |
+| 46 | probe.legal_moves.legal_entropy | 2.1689 |
+| 46 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00158691 |
+| 46 | probe.legal_moves.probability_mass_removed_by_safety | 0.00565018 |
+| 46 | train_seconds | 261.58 |
+| 46 | validation_seconds | 6.69594 |
+| 46 | diagnostics_seconds | 2.0805 |
+| 47 | probe.positions | 8,192 |
+| 47 | probe.temperature | 1 |
+| 47 | probe.raw_nll | 2.66678 |
+| 47 | probe.raw_top1 | 0.310425 |
+| 47 | probe.legal_moves.legal_probability_mass | 0.86461 |
+| 47 | probe.legal_moves.legal_nll | 2.51033 |
+| 47 | probe.legal_moves.legal_top1 | 0.312866 |
+| 47 | probe.legal_moves.legal_entropy | 2.26933 |
+| 47 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00170898 |
+| 47 | probe.legal_moves.probability_mass_removed_by_safety | 0.00594495 |
+| 47 | train_seconds | 253.544 |
+| 47 | validation_seconds | 6.65175 |
+| 47 | diagnostics_seconds | 2.09315 |
+| 48 | probe.positions | 8,192 |
+| 48 | probe.temperature | 1 |
+| 48 | probe.raw_nll | 2.66588 |
+| 48 | probe.raw_top1 | 0.310913 |
+| 48 | probe.legal_moves.legal_probability_mass | 0.866622 |
+| 48 | probe.legal_moves.legal_nll | 2.51218 |
+| 48 | probe.legal_moves.legal_top1 | 0.31311 |
+| 48 | probe.legal_moves.legal_entropy | 2.2572 |
+| 48 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00170898 |
+| 48 | probe.legal_moves.probability_mass_removed_by_safety | 0.00595055 |
+| 48 | train_seconds | 257.156 |
+| 48 | validation_seconds | 6.66444 |
+| 48 | diagnostics_seconds | 2.0923 |
+| 49 | probe.positions | 8,192 |
+| 49 | probe.temperature | 1 |
+| 49 | probe.raw_nll | 2.66445 |
+| 49 | probe.raw_top1 | 0.31311 |
+| 49 | probe.legal_moves.legal_probability_mass | 0.869827 |
+| 49 | probe.legal_moves.legal_nll | 2.51455 |
+| 49 | probe.legal_moves.legal_top1 | 0.315186 |
+| 49 | probe.legal_moves.legal_entropy | 2.24923 |
+| 49 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00195312 |
+| 49 | probe.legal_moves.probability_mass_removed_by_safety | 0.00593819 |
+| 49 | train_seconds | 262.53 |
+| 49 | validation_seconds | 6.92481 |
+| 49 | diagnostics_seconds | 2.12782 |
+| 50 | probe.positions | 8,192 |
+| 50 | probe.temperature | 1 |
+| 50 | probe.raw_nll | 2.66352 |
+| 50 | probe.raw_top1 | 0.310181 |
+| 50 | probe.legal_moves.legal_probability_mass | 0.866092 |
+| 50 | probe.legal_moves.legal_nll | 2.5089 |
+| 50 | probe.legal_moves.legal_top1 | 0.312622 |
+| 50 | probe.legal_moves.legal_entropy | 2.26085 |
+| 50 | probe.legal_moves.preferred_legal_move_removed_by_safety | 0.00146484 |
+| 50 | probe.legal_moves.probability_mass_removed_by_safety | 0.00580152 |
+| 50 | train_seconds | 275.596 |
+| 50 | validation_seconds | 6.82142 |
+| 50 | diagnostics_seconds | 2.5575 |
+
+#### Layer activation evolution at every checkpoint
+
+| Epoch/update | Layer | Mean absolute activation | Std | Zeros | Dormant | Top-1 activity | Top-4 activity |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | encoder.norm0 | 0.309205 | 0.402168 | 0.000% | 0.000% | 4.766% | 17.828% |
+| 1 | encoder.1 | 0.141667 | 0.222492 | 51.015% | 0.000% | 6.994% | 20.607% |
+| 1 | encoder.2.0.norm1 | 0.563866 | 0.724233 | 0.000% | 0.000% | 4.590% | 17.136% |
+| 1 | encoder.2.0.relu1 | 0.20266 | 0.374942 | 60.296% | 0.000% | 7.200% | 21.960% |
+| 1 | encoder.2.0.norm2 | 0.287138 | 0.322038 | 0.000% | 0.000% | 5.505% | 18.585% |
+| 1 | encoder.2.0.relu2 | 0.0924673 | 0.172661 | 57.163% | 0.000% | 6.125% | 22.602% |
+| 1 | encoder.2.1.norm1 | 0.582219 | 0.725094 | 0.000% | 0.000% | 4.518% | 17.013% |
+| 1 | encoder.2.1.relu1 | 0.188928 | 0.335539 | 61.052% | 0.000% | 6.339% | 23.973% |
+| 1 | encoder.2.1.norm2 | 0.420019 | 0.289676 | 0.000% | 0.000% | 4.223% | 16.514% |
+| 1 | encoder.2.1.relu2 | 0.0302275 | 0.11357 | 85.901% | 0.000% | 20.505% | 41.123% |
+| 1 | encoder.2.2.norm1 | 0.529231 | 0.739655 | 0.000% | 0.000% | 5.124% | 18.300% |
+| 1 | encoder.2.2.relu1 | 0.170064 | 0.395548 | 65.627% | 0.000% | 8.645% | 25.598% |
+| 1 | encoder.2.2.norm2 | 0.346941 | 0.263326 | 0.000% | 0.000% | 4.571% | 16.804% |
+| 1 | encoder.2.2.relu2 | 0.0161674 | 0.119298 | 95.781% | 3.125% | 67.473% | 83.354% |
+| 1 | encoder.6 | 0.224851 | 0.396368 | 57.143% | 10.156% | 6.381% | 14.023% |
+| 2 | encoder.norm0 | 0.128098 | 0.168763 | 0.000% | 0.000% | 5.419% | 20.026% |
+| 2 | encoder.1 | 0.0622977 | 0.0941756 | 48.549% | 0.000% | 7.159% | 21.635% |
+| 2 | encoder.2.0.norm1 | 0.420625 | 0.532554 | 0.000% | 0.000% | 4.903% | 18.196% |
+| 2 | encoder.2.0.relu1 | 0.143181 | 0.265969 | 61.106% | 0.000% | 7.283% | 23.631% |
+| 2 | encoder.2.0.norm2 | 0.131992 | 0.147794 | 0.000% | 0.000% | 7.207% | 21.508% |
+| 2 | encoder.2.0.relu2 | 0.0371311 | 0.0711309 | 59.647% | 0.000% | 7.167% | 26.932% |
+| 2 | encoder.2.1.norm1 | 0.42921 | 0.541796 | 0.000% | 0.000% | 5.553% | 19.420% |
+| 2 | encoder.2.1.relu1 | 0.14516 | 0.252511 | 59.403% | 0.000% | 6.797% | 25.079% |
+| 2 | encoder.2.1.norm2 | 0.247797 | 0.144464 | 0.000% | 0.000% | 4.401% | 17.468% |
+| 2 | encoder.2.1.relu2 | 0.00726128 | 0.0392674 | 92.901% | 0.000% | 32.615% | 60.727% |
+| 2 | encoder.2.2.norm1 | 0.358583 | 0.52663 | 0.000% | 0.000% | 5.291% | 18.776% |
+| 2 | encoder.2.2.relu1 | 0.13396 | 0.312821 | 63.226% | 0.000% | 8.880% | 27.284% |
+| 2 | encoder.2.2.norm2 | 0.112893 | 0.131131 | 0.000% | 0.000% | 8.140% | 26.019% |
+| 2 | encoder.2.2.relu2 | 0.0120698 | 0.0961653 | 96.045% | 6.250% | 85.738% | 93.630% |
+| 2 | encoder.6 | 0.144649 | 0.372541 | 59.714% | 10.156% | 16.979% | 23.530% |
+| 3 | encoder.norm0 | 0.0791236 | 0.103107 | 0.000% | 0.000% | 5.210% | 19.551% |
+| 3 | encoder.1 | 0.0427199 | 0.0604331 | 45.598% | 0.000% | 7.853% | 23.223% |
+| 3 | encoder.2.0.norm1 | 0.325517 | 0.407194 | 0.000% | 0.000% | 5.475% | 19.365% |
+| 3 | encoder.2.0.relu1 | 0.104553 | 0.197511 | 62.043% | 0.000% | 7.514% | 22.675% |
+| 3 | encoder.2.0.norm2 | 0.0881698 | 0.0977595 | 0.000% | 0.000% | 7.680% | 22.037% |
+| 3 | encoder.2.0.relu2 | 0.0246265 | 0.0465285 | 61.071% | 0.000% | 8.332% | 28.900% |
+| 3 | encoder.2.1.norm1 | 0.331929 | 0.416906 | 0.000% | 0.000% | 5.706% | 19.598% |
+| 3 | encoder.2.1.relu1 | 0.11228 | 0.196794 | 59.678% | 0.000% | 7.282% | 26.646% |
+| 3 | encoder.2.1.norm2 | 0.176247 | 0.0933772 | 0.000% | 0.000% | 4.553% | 17.188% |
+| 3 | encoder.2.1.relu2 | 0.00413485 | 0.0232775 | 93.898% | 0.000% | 33.965% | 66.715% |
+| 3 | encoder.2.2.norm1 | 0.25467 | 0.385991 | 0.000% | 0.000% | 4.913% | 19.005% |
+| 3 | encoder.2.2.relu1 | 0.104667 | 0.241971 | 62.090% | 0.000% | 9.237% | 31.778% |
+| 3 | encoder.2.2.norm2 | 0.0695894 | 0.0955322 | 0.000% | 0.000% | 11.949% | 32.162% |
+| 3 | encoder.2.2.relu2 | 0.00985406 | 0.0820515 | 96.369% | 21.875% | 90.447% | 95.691% |
+| 3 | encoder.6 | 0.122396 | 0.366149 | 59.276% | 10.156% | 20.801% | 26.936% |
+| 4 | encoder.norm0 | 0.066549 | 0.0866035 | 0.000% | 0.000% | 4.832% | 18.646% |
+| 4 | encoder.1 | 0.0359157 | 0.0505689 | 46.150% | 0.000% | 7.454% | 22.124% |
+| 4 | encoder.2.0.norm1 | 0.273747 | 0.343352 | 0.000% | 0.000% | 5.780% | 19.621% |
+| 4 | encoder.2.0.relu1 | 0.0873529 | 0.167028 | 62.163% | 0.000% | 7.619% | 23.336% |
+| 4 | encoder.2.0.norm2 | 0.0794244 | 0.0874437 | 0.000% | 0.000% | 6.818% | 21.190% |
+| 4 | encoder.2.0.relu2 | 0.0210998 | 0.0401297 | 62.420% | 0.000% | 8.931% | 29.505% |
+| 4 | encoder.2.1.norm1 | 0.284252 | 0.360147 | 0.000% | 0.000% | 5.785% | 20.264% |
+| 4 | encoder.2.1.relu1 | 0.0975651 | 0.169052 | 58.542% | 0.000% | 8.194% | 25.054% |
+| 4 | encoder.2.1.norm2 | 0.156712 | 0.0844763 | 0.000% | 0.000% | 4.430% | 17.417% |
+| 4 | encoder.2.1.relu2 | 0.00337189 | 0.0192355 | 94.486% | 0.000% | 35.035% | 74.173% |
+| 4 | encoder.2.2.norm1 | 0.212096 | 0.333692 | 0.000% | 0.000% | 6.127% | 21.779% |
+| 4 | encoder.2.2.relu1 | 0.089146 | 0.211001 | 61.382% | 0.000% | 9.935% | 33.837% |
+| 4 | encoder.2.2.norm2 | 0.0614268 | 0.0928378 | 0.000% | 0.000% | 13.523% | 36.494% |
+| 4 | encoder.2.2.relu2 | 0.00953511 | 0.0804738 | 96.534% | 28.125% | 92.600% | 96.759% |
+| 4 | encoder.6 | 0.0955083 | 0.296827 | 62.839% | 10.156% | 21.177% | 27.347% |
+| 5 | encoder.norm0 | 0.0635188 | 0.0818115 | 0.000% | 0.000% | 4.638% | 18.298% |
+| 5 | encoder.1 | 0.0344106 | 0.0480037 | 46.415% | 0.000% | 7.295% | 22.571% |
+| 5 | encoder.2.0.norm1 | 0.24518 | 0.310719 | 0.000% | 0.000% | 6.013% | 20.733% |
+| 5 | encoder.2.0.relu1 | 0.0790758 | 0.151817 | 62.327% | 0.000% | 7.581% | 24.026% |
+| 5 | encoder.2.0.norm2 | 0.0760355 | 0.0816891 | 0.000% | 0.000% | 6.981% | 20.476% |
+| 5 | encoder.2.0.relu2 | 0.0189388 | 0.0374119 | 63.857% | 0.000% | 9.376% | 31.832% |
+| 5 | encoder.2.1.norm1 | 0.258454 | 0.332866 | 0.000% | 0.000% | 6.248% | 20.435% |
+| 5 | encoder.2.1.relu1 | 0.0918872 | 0.162191 | 58.249% | 0.000% | 8.763% | 27.217% |
+| 5 | encoder.2.1.norm2 | 0.150148 | 0.0843516 | 0.000% | 0.000% | 4.854% | 17.617% |
+| 5 | encoder.2.1.relu2 | 0.00337555 | 0.0187965 | 94.345% | 0.000% | 39.503% | 80.011% |
+| 5 | encoder.2.2.norm1 | 0.196388 | 0.310791 | 0.000% | 0.000% | 6.383% | 22.928% |
+| 5 | encoder.2.2.relu1 | 0.0805578 | 0.197441 | 61.966% | 0.000% | 10.853% | 36.624% |
+| 5 | encoder.2.2.norm2 | 0.0607305 | 0.0939411 | 0.000% | 0.000% | 13.678% | 38.366% |
+| 5 | encoder.2.2.relu2 | 0.00945331 | 0.0809154 | 96.508% | 34.375% | 93.497% | 97.092% |
+| 5 | encoder.6 | 0.095682 | 0.247361 | 60.751% | 10.156% | 16.153% | 22.872% |
+| 6 | encoder.norm0 | 0.0627719 | 0.0805411 | 0.000% | 0.000% | 4.751% | 18.342% |
+| 6 | encoder.1 | 0.0351322 | 0.0477488 | 45.152% | 0.000% | 6.796% | 22.888% |
+| 6 | encoder.2.0.norm1 | 0.232081 | 0.290344 | 0.000% | 0.000% | 5.844% | 20.540% |
+| 6 | encoder.2.0.relu1 | 0.0729729 | 0.139102 | 62.643% | 0.000% | 8.390% | 24.319% |
+| 6 | encoder.2.0.norm2 | 0.0767041 | 0.0805907 | 0.000% | 0.000% | 6.786% | 20.789% |
+| 6 | encoder.2.0.relu2 | 0.0192508 | 0.0373737 | 64.015% | 0.000% | 9.021% | 31.194% |
+| 6 | encoder.2.1.norm1 | 0.243923 | 0.311902 | 0.000% | 0.000% | 6.720% | 20.958% |
+| 6 | encoder.2.1.relu1 | 0.0879162 | 0.150608 | 57.274% | 0.000% | 8.616% | 27.208% |
+| 6 | encoder.2.1.norm2 | 0.15122 | 0.0872272 | 0.000% | 0.000% | 5.234% | 19.430% |
+| 6 | encoder.2.1.relu2 | 0.00325588 | 0.0179201 | 94.512% | 3.125% | 41.556% | 82.407% |
+| 6 | encoder.2.2.norm1 | 0.18563 | 0.299215 | 0.000% | 0.000% | 6.645% | 23.741% |
+| 6 | encoder.2.2.relu1 | 0.0777904 | 0.191013 | 60.430% | 0.000% | 11.344% | 38.774% |
+| 6 | encoder.2.2.norm2 | 0.057647 | 0.0920864 | 0.000% | 0.000% | 14.758% | 36.808% |
+| 6 | encoder.2.2.relu2 | 0.00950808 | 0.0815959 | 96.559% | 37.500% | 93.924% | 97.210% |
+| 6 | encoder.6 | 0.0896143 | 0.233455 | 62.085% | 10.156% | 16.229% | 22.935% |
+| 7 | encoder.norm0 | 0.0629631 | 0.0805638 | 0.000% | 0.000% | 4.645% | 17.701% |
+| 7 | encoder.1 | 0.0343135 | 0.0472403 | 45.781% | 0.000% | 7.276% | 22.890% |
+| 7 | encoder.2.0.norm1 | 0.221006 | 0.279428 | 0.000% | 0.000% | 5.837% | 20.220% |
+| 7 | encoder.2.0.relu1 | 0.0703276 | 0.134004 | 62.332% | 0.000% | 8.219% | 24.317% |
+| 7 | encoder.2.0.norm2 | 0.0767985 | 0.0784851 | 0.000% | 0.000% | 6.029% | 20.221% |
+| 7 | encoder.2.0.relu2 | 0.0176476 | 0.0359969 | 66.367% | 0.000% | 9.615% | 30.211% |
+| 7 | encoder.2.1.norm1 | 0.236353 | 0.302936 | 0.000% | 0.000% | 6.079% | 20.421% |
+| 7 | encoder.2.1.relu1 | 0.0844511 | 0.14691 | 57.860% | 0.000% | 9.006% | 27.940% |
+| 7 | encoder.2.1.norm2 | 0.154685 | 0.0932453 | 0.000% | 0.000% | 5.725% | 20.520% |
+| 7 | encoder.2.1.relu2 | 0.00321304 | 0.0174738 | 94.500% | 3.125% | 42.855% | 84.782% |
+| 7 | encoder.2.2.norm1 | 0.177803 | 0.282248 | 0.000% | 0.000% | 7.150% | 24.343% |
+| 7 | encoder.2.2.relu1 | 0.0662796 | 0.171643 | 63.553% | 0.000% | 11.990% | 40.807% |
+| 7 | encoder.2.2.norm2 | 0.0531187 | 0.0848476 | 0.000% | 0.000% | 14.492% | 37.551% |
+| 7 | encoder.2.2.relu2 | 0.00853622 | 0.0754636 | 96.705% | 31.250% | 93.876% | 97.306% |
+| 7 | encoder.6 | 0.10075 | 0.211428 | 58.255% | 10.156% | 11.647% | 17.914% |
+| 8 | encoder.norm0 | 0.0636066 | 0.0808804 | 0.000% | 0.000% | 4.934% | 17.787% |
+| 8 | encoder.1 | 0.0340519 | 0.0465943 | 46.504% | 0.000% | 6.819% | 23.708% |
+| 8 | encoder.2.0.norm1 | 0.219669 | 0.274831 | 0.000% | 0.000% | 6.130% | 21.054% |
+| 8 | encoder.2.0.relu1 | 0.0690458 | 0.131339 | 62.586% | 0.000% | 7.330% | 24.003% |
+| 8 | encoder.2.0.norm2 | 0.080064 | 0.0803314 | 0.000% | 0.000% | 6.219% | 20.708% |
+| 8 | encoder.2.0.relu2 | 0.0162498 | 0.0344922 | 68.153% | 0.000% | 10.935% | 33.889% |
+| 8 | encoder.2.1.norm1 | 0.229003 | 0.293442 | 0.000% | 0.000% | 6.150% | 20.549% |
+| 8 | encoder.2.1.relu1 | 0.0833568 | 0.145173 | 57.635% | 0.000% | 9.187% | 29.489% |
+| 8 | encoder.2.1.norm2 | 0.152263 | 0.0932323 | 0.000% | 0.000% | 5.878% | 20.887% |
+| 8 | encoder.2.1.relu2 | 0.00319589 | 0.0173336 | 94.549% | 9.375% | 45.830% | 85.706% |
+| 8 | encoder.2.2.norm1 | 0.173779 | 0.270833 | 0.000% | 0.000% | 7.139% | 23.848% |
+| 8 | encoder.2.2.relu1 | 0.0637974 | 0.163076 | 63.707% | 0.000% | 12.499% | 42.188% |
+| 8 | encoder.2.2.norm2 | 0.0540312 | 0.0828759 | 0.000% | 0.000% | 13.953% | 36.888% |
+| 8 | encoder.2.2.relu2 | 0.0081579 | 0.0740594 | 96.841% | 34.375% | 94.275% | 97.345% |
+| 8 | encoder.6 | 0.0805471 | 0.169787 | 61.522% | 10.156% | 10.333% | 17.746% |
+| 9 | encoder.norm0 | 0.0625795 | 0.0805793 | 0.000% | 0.000% | 5.148% | 18.526% |
+| 9 | encoder.1 | 0.0330379 | 0.0462625 | 46.793% | 0.000% | 6.436% | 21.948% |
+| 9 | encoder.2.0.norm1 | 0.216458 | 0.272004 | 0.000% | 0.000% | 5.775% | 20.427% |
+| 9 | encoder.2.0.relu1 | 0.0681285 | 0.130134 | 62.637% | 0.000% | 7.398% | 24.746% |
+| 9 | encoder.2.0.norm2 | 0.0815034 | 0.0817662 | 0.000% | 0.000% | 5.800% | 21.072% |
+| 9 | encoder.2.0.relu2 | 0.0151624 | 0.0332949 | 69.009% | 0.000% | 9.841% | 33.414% |
+| 9 | encoder.2.1.norm1 | 0.221393 | 0.285447 | 0.000% | 0.000% | 5.800% | 20.532% |
+| 9 | encoder.2.1.relu1 | 0.084035 | 0.146021 | 57.484% | 0.000% | 10.256% | 32.090% |
+| 9 | encoder.2.1.norm2 | 0.157638 | 0.0965765 | 0.000% | 0.000% | 5.610% | 20.748% |
+| 9 | encoder.2.1.relu2 | 0.0030819 | 0.0168072 | 94.699% | 6.250% | 43.832% | 87.142% |
+| 9 | encoder.2.2.norm1 | 0.167696 | 0.262076 | 0.000% | 0.000% | 6.782% | 23.958% |
+| 9 | encoder.2.2.relu1 | 0.0626269 | 0.161063 | 62.750% | 0.000% | 12.047% | 45.512% |
+| 9 | encoder.2.2.norm2 | 0.0568672 | 0.0859407 | 0.000% | 0.000% | 13.607% | 34.996% |
+| 9 | encoder.2.2.relu2 | 0.00818298 | 0.0748803 | 96.857% | 40.625% | 94.523% | 97.477% |
+| 9 | encoder.6 | 0.0672168 | 0.14578 | 64.806% | 10.156% | 9.782% | 17.713% |
+| 10 | encoder.norm0 | 0.0635134 | 0.0806773 | 0.000% | 0.000% | 4.687% | 17.161% |
+| 10 | encoder.1 | 0.0341198 | 0.0465352 | 46.272% | 0.000% | 6.502% | 23.109% |
+| 10 | encoder.2.0.norm1 | 0.212739 | 0.264988 | 0.000% | 0.000% | 5.731% | 20.504% |
+| 10 | encoder.2.0.relu1 | 0.0679576 | 0.128183 | 62.582% | 0.000% | 7.095% | 24.486% |
+| 10 | encoder.2.0.norm2 | 0.0812015 | 0.0808331 | 0.000% | 0.000% | 5.786% | 20.676% |
+| 10 | encoder.2.0.relu2 | 0.0161827 | 0.0346551 | 68.265% | 0.000% | 9.561% | 31.220% |
+| 10 | encoder.2.1.norm1 | 0.214999 | 0.277904 | 0.000% | 0.000% | 5.898% | 20.719% |
+| 10 | encoder.2.1.relu1 | 0.0851639 | 0.145137 | 56.217% | 0.000% | 9.949% | 31.362% |
+| 10 | encoder.2.1.norm2 | 0.157655 | 0.0976356 | 0.000% | 0.000% | 5.691% | 20.290% |
+| 10 | encoder.2.1.relu2 | 0.00310466 | 0.0168108 | 94.635% | 9.375% | 43.994% | 88.081% |
+| 10 | encoder.2.2.norm1 | 0.16137 | 0.249152 | 0.000% | 0.000% | 6.683% | 24.133% |
+| 10 | encoder.2.2.relu1 | 0.0583188 | 0.149599 | 62.443% | 0.000% | 12.121% | 45.075% |
+| 10 | encoder.2.2.norm2 | 0.0537043 | 0.0815779 | 0.000% | 0.000% | 13.990% | 35.021% |
+| 10 | encoder.2.2.relu2 | 0.00780052 | 0.0720816 | 96.830% | 37.500% | 94.202% | 97.439% |
+| 10 | encoder.6 | 0.0698996 | 0.14335 | 63.358% | 10.938% | 8.898% | 16.667% |
+| 11 | encoder.norm0 | 0.0621683 | 0.0797511 | 0.000% | 0.000% | 4.695% | 17.712% |
+| 11 | encoder.1 | 0.0328673 | 0.0454858 | 46.202% | 0.000% | 6.349% | 22.061% |
+| 11 | encoder.2.0.norm1 | 0.209519 | 0.262862 | 0.000% | 0.000% | 6.043% | 20.520% |
+| 11 | encoder.2.0.relu1 | 0.0677986 | 0.127456 | 62.117% | 0.000% | 7.950% | 25.273% |
+| 11 | encoder.2.0.norm2 | 0.082944 | 0.0830322 | 0.000% | 0.000% | 6.031% | 20.539% |
+| 11 | encoder.2.0.relu2 | 0.0158938 | 0.0344209 | 69.187% | 0.000% | 10.259% | 33.667% |
+| 11 | encoder.2.1.norm1 | 0.211292 | 0.275786 | 0.000% | 0.000% | 6.046% | 21.208% |
+| 11 | encoder.2.1.relu1 | 0.0848403 | 0.144852 | 55.374% | 0.000% | 9.734% | 31.614% |
+| 11 | encoder.2.1.norm2 | 0.157205 | 0.0979988 | 0.000% | 0.000% | 5.893% | 20.943% |
+| 11 | encoder.2.1.relu2 | 0.00303491 | 0.0168379 | 94.818% | 6.250% | 45.634% | 87.406% |
+| 11 | encoder.2.2.norm1 | 0.159951 | 0.246411 | 0.000% | 0.000% | 6.717% | 24.025% |
+| 11 | encoder.2.2.relu1 | 0.0572129 | 0.147383 | 63.228% | 0.000% | 13.080% | 47.678% |
+| 11 | encoder.2.2.norm2 | 0.0527812 | 0.081832 | 0.000% | 0.000% | 13.957% | 34.567% |
+| 11 | encoder.2.2.relu2 | 0.00774103 | 0.0723856 | 96.856% | 40.625% | 94.306% | 97.495% |
+| 11 | encoder.6 | 0.0712939 | 0.140675 | 62.440% | 10.156% | 7.846% | 14.900% |
+| 12 | encoder.norm0 | 0.0629713 | 0.0795635 | 0.000% | 0.000% | 4.575% | 17.535% |
+| 12 | encoder.1 | 0.0349842 | 0.0468462 | 45.029% | 0.000% | 6.730% | 23.218% |
+| 12 | encoder.2.0.norm1 | 0.207884 | 0.263332 | 0.000% | 0.000% | 6.270% | 21.095% |
+| 12 | encoder.2.0.relu1 | 0.0693729 | 0.128394 | 61.377% | 0.000% | 7.439% | 24.243% |
+| 12 | encoder.2.0.norm2 | 0.0844233 | 0.0839241 | 0.000% | 0.000% | 5.883% | 20.636% |
+| 12 | encoder.2.0.relu2 | 0.0159331 | 0.0350321 | 69.325% | 0.000% | 11.118% | 36.274% |
+| 12 | encoder.2.1.norm1 | 0.216125 | 0.281055 | 0.000% | 0.000% | 5.870% | 20.986% |
+| 12 | encoder.2.1.relu1 | 0.0838334 | 0.148372 | 57.183% | 0.000% | 10.527% | 33.933% |
+| 12 | encoder.2.1.norm2 | 0.162714 | 0.102321 | 0.000% | 0.000% | 5.490% | 20.745% |
+| 12 | encoder.2.1.relu2 | 0.00310998 | 0.0169463 | 94.649% | 9.375% | 43.716% | 88.206% |
+| 12 | encoder.2.2.norm1 | 0.166601 | 0.261423 | 0.000% | 0.000% | 6.726% | 25.144% |
+| 12 | encoder.2.2.relu1 | 0.0597095 | 0.156892 | 62.762% | 0.000% | 13.594% | 46.887% |
+| 12 | encoder.2.2.norm2 | 0.0558685 | 0.0926233 | 0.000% | 0.000% | 14.894% | 35.483% |
+| 12 | encoder.2.2.relu2 | 0.00883768 | 0.0820428 | 96.732% | 43.750% | 94.391% | 97.219% |
+| 12 | encoder.6 | 0.0739175 | 0.143185 | 63.078% | 10.156% | 7.291% | 15.028% |
+| 13 | encoder.norm0 | 0.063349 | 0.0801043 | 0.000% | 0.000% | 4.232% | 16.515% |
+| 13 | encoder.1 | 0.0347335 | 0.0468219 | 45.388% | 0.000% | 6.283% | 22.729% |
+| 13 | encoder.2.0.norm1 | 0.208935 | 0.25897 | 0.000% | 0.000% | 5.847% | 20.957% |
+| 13 | encoder.2.0.relu1 | 0.0651867 | 0.123448 | 62.988% | 0.000% | 7.027% | 24.733% |
+| 13 | encoder.2.0.norm2 | 0.0857283 | 0.0850013 | 0.000% | 0.000% | 6.138% | 21.601% |
+| 13 | encoder.2.0.relu2 | 0.015356 | 0.034477 | 70.680% | 0.000% | 11.264% | 33.269% |
+| 13 | encoder.2.1.norm1 | 0.207554 | 0.271757 | 0.000% | 0.000% | 6.264% | 21.235% |
+| 13 | encoder.2.1.relu1 | 0.0841277 | 0.145576 | 55.874% | 0.000% | 10.444% | 34.584% |
+| 13 | encoder.2.1.norm2 | 0.158691 | 0.102668 | 0.000% | 0.000% | 5.568% | 21.657% |
+| 13 | encoder.2.1.relu2 | 0.00327555 | 0.0175694 | 94.543% | 6.250% | 46.851% | 88.391% |
+| 13 | encoder.2.2.norm1 | 0.162734 | 0.257539 | 0.000% | 0.000% | 6.754% | 24.421% |
+| 13 | encoder.2.2.relu1 | 0.0551929 | 0.151771 | 63.894% | 0.000% | 13.453% | 47.315% |
+| 13 | encoder.2.2.norm2 | 0.052318 | 0.0880362 | 0.000% | 0.000% | 14.690% | 35.848% |
+| 13 | encoder.2.2.relu2 | 0.0083108 | 0.0785028 | 96.665% | 40.625% | 93.950% | 96.816% |
+| 13 | encoder.6 | 0.103519 | 0.173008 | 56.226% | 10.156% | 5.615% | 13.197% |
+| 14 | encoder.norm0 | 0.0616857 | 0.0788332 | 0.000% | 0.000% | 4.585% | 16.881% |
+| 14 | encoder.1 | 0.0325332 | 0.0458409 | 46.939% | 0.000% | 6.081% | 23.491% |
+| 14 | encoder.2.0.norm1 | 0.202217 | 0.25236 | 0.000% | 0.000% | 5.760% | 20.503% |
+| 14 | encoder.2.0.relu1 | 0.0642864 | 0.121839 | 62.722% | 0.000% | 7.313% | 25.208% |
+| 14 | encoder.2.0.norm2 | 0.0855849 | 0.0830677 | 0.000% | 0.000% | 5.741% | 20.729% |
+| 14 | encoder.2.0.relu2 | 0.0145916 | 0.0338469 | 71.652% | 0.000% | 11.414% | 35.322% |
+| 14 | encoder.2.1.norm1 | 0.202438 | 0.266492 | 0.000% | 0.000% | 6.270% | 21.601% |
+| 14 | encoder.2.1.relu1 | 0.0820273 | 0.142413 | 55.365% | 0.000% | 11.205% | 35.188% |
+| 14 | encoder.2.1.norm2 | 0.158162 | 0.103181 | 0.000% | 0.000% | 5.981% | 21.694% |
+| 14 | encoder.2.1.relu2 | 0.00326548 | 0.0176604 | 94.480% | 6.250% | 46.595% | 88.278% |
+| 14 | encoder.2.2.norm1 | 0.152654 | 0.268459 | 0.000% | 0.000% | 6.330% | 24.594% |
+| 14 | encoder.2.2.relu1 | 0.0533427 | 0.185574 | 62.968% | 0.000% | 14.397% | 46.349% |
+| 14 | encoder.2.2.norm2 | 0.0537874 | 0.0926014 | 0.000% | 0.000% | 14.485% | 33.813% |
+| 14 | encoder.2.2.relu2 | 0.00835563 | 0.0792073 | 96.800% | 43.750% | 94.401% | 97.209% |
+| 14 | encoder.6 | 0.0777881 | 0.143347 | 61.382% | 10.156% | 6.031% | 13.630% |
+| 15 | encoder.norm0 | 0.062101 | 0.0793953 | 0.000% | 0.000% | 4.616% | 17.443% |
+| 15 | encoder.1 | 0.0328403 | 0.0450869 | 45.626% | 0.000% | 6.126% | 22.211% |
+| 15 | encoder.2.0.norm1 | 0.202688 | 0.252165 | 0.000% | 0.000% | 5.925% | 21.322% |
+| 15 | encoder.2.0.relu1 | 0.0619746 | 0.1192 | 63.273% | 0.000% | 7.685% | 26.652% |
+| 15 | encoder.2.0.norm2 | 0.0880873 | 0.0862111 | 0.000% | 0.000% | 5.952% | 20.866% |
+| 15 | encoder.2.0.relu2 | 0.0147493 | 0.0336778 | 71.542% | 0.000% | 12.381% | 35.668% |
+| 15 | encoder.2.1.norm1 | 0.200584 | 0.264493 | 0.000% | 0.000% | 6.170% | 22.085% |
+| 15 | encoder.2.1.relu1 | 0.0809363 | 0.142927 | 55.711% | 0.000% | 11.998% | 35.610% |
+| 15 | encoder.2.1.norm2 | 0.160717 | 0.107863 | 0.000% | 0.000% | 6.685% | 22.711% |
+| 15 | encoder.2.1.relu2 | 0.00326745 | 0.0177678 | 94.410% | 9.375% | 47.277% | 88.858% |
+| 15 | encoder.2.2.norm1 | 0.146832 | 0.287452 | 0.000% | 0.000% | 6.374% | 24.644% |
+| 15 | encoder.2.2.relu1 | 0.0497655 | 0.218412 | 63.334% | 0.000% | 14.405% | 47.009% |
+| 15 | encoder.2.2.norm2 | 0.0542974 | 0.0978705 | 0.000% | 0.000% | 14.680% | 38.020% |
+| 15 | encoder.2.2.relu2 | 0.00860404 | 0.0801578 | 96.815% | 43.750% | 94.548% | 97.202% |
+| 15 | encoder.6 | 0.0654222 | 0.13583 | 65.034% | 10.156% | 8.364% | 17.276% |
+| 16 | encoder.norm0 | 0.0612218 | 0.0783406 | 0.000% | 0.000% | 4.524% | 17.304% |
+| 16 | encoder.1 | 0.0321691 | 0.0446452 | 46.274% | 0.000% | 6.354% | 23.484% |
+| 16 | encoder.2.0.norm1 | 0.198416 | 0.247333 | 0.000% | 0.000% | 6.033% | 20.600% |
+| 16 | encoder.2.0.relu1 | 0.0616197 | 0.118004 | 62.976% | 0.000% | 7.847% | 26.436% |
+| 16 | encoder.2.0.norm2 | 0.0877385 | 0.0854133 | 0.000% | 0.000% | 5.500% | 20.962% |
+| 16 | encoder.2.0.relu2 | 0.014313 | 0.0329528 | 71.935% | 0.000% | 10.433% | 34.517% |
+| 16 | encoder.2.1.norm1 | 0.196535 | 0.260878 | 0.000% | 0.000% | 6.527% | 22.236% |
+| 16 | encoder.2.1.relu1 | 0.0819033 | 0.142222 | 54.577% | 0.000% | 10.700% | 36.115% |
+| 16 | encoder.2.1.norm2 | 0.164032 | 0.115857 | 0.000% | 0.000% | 8.592% | 24.859% |
+| 16 | encoder.2.1.relu2 | 0.00320918 | 0.0174659 | 94.371% | 18.750% | 47.832% | 87.985% |
+| 16 | encoder.2.2.norm1 | 0.141266 | 0.297135 | 0.000% | 0.000% | 7.005% | 25.355% |
+| 16 | encoder.2.2.relu1 | 0.047668 | 0.237197 | 63.518% | 0.000% | 15.826% | 46.995% |
+| 16 | encoder.2.2.norm2 | 0.0538555 | 0.101406 | 0.000% | 0.000% | 14.392% | 38.293% |
+| 16 | encoder.2.2.relu2 | 0.00832443 | 0.0782968 | 96.879% | 43.750% | 94.597% | 97.361% |
+| 16 | encoder.6 | 0.058178 | 0.120507 | 65.837% | 10.938% | 7.459% | 16.144% |
+| 17 | encoder.norm0 | 0.0601916 | 0.0771034 | 0.000% | 0.000% | 4.449% | 16.988% |
+| 17 | encoder.1 | 0.0313086 | 0.043989 | 47.571% | 0.000% | 6.179% | 23.338% |
+| 17 | encoder.2.0.norm1 | 0.198075 | 0.245656 | 0.000% | 0.000% | 6.047% | 20.529% |
+| 17 | encoder.2.0.relu1 | 0.0620177 | 0.11736 | 62.479% | 0.000% | 7.401% | 25.945% |
+| 17 | encoder.2.0.norm2 | 0.0879945 | 0.0859299 | 0.000% | 0.000% | 5.394% | 20.822% |
+| 17 | encoder.2.0.relu2 | 0.0135661 | 0.0321577 | 72.764% | 0.000% | 12.045% | 36.226% |
+| 17 | encoder.2.1.norm1 | 0.191457 | 0.256304 | 0.000% | 0.000% | 6.801% | 22.753% |
+| 17 | encoder.2.1.relu1 | 0.0814701 | 0.140973 | 53.893% | 0.000% | 10.770% | 35.596% |
+| 17 | encoder.2.1.norm2 | 0.165175 | 0.122543 | 0.000% | 0.000% | 9.936% | 26.150% |
+| 17 | encoder.2.1.relu2 | 0.00316095 | 0.0173967 | 94.260% | 9.375% | 44.982% | 87.553% |
+| 17 | encoder.2.2.norm1 | 0.139529 | 0.312746 | 0.000% | 0.000% | 8.767% | 26.687% |
+| 17 | encoder.2.2.relu1 | 0.0440277 | 0.256356 | 65.697% | 0.000% | 16.180% | 48.907% |
+| 17 | encoder.2.2.norm2 | 0.0529937 | 0.10612 | 0.000% | 0.000% | 14.858% | 39.388% |
+| 17 | encoder.2.2.relu2 | 0.00837435 | 0.0798094 | 96.892% | 46.875% | 94.243% | 96.876% |
+| 17 | encoder.6 | 0.0662406 | 0.130314 | 63.164% | 10.938% | 6.630% | 15.443% |
+| 18 | encoder.norm0 | 0.0597368 | 0.0764158 | 0.000% | 0.000% | 4.555% | 17.320% |
+| 18 | encoder.1 | 0.0317362 | 0.0436679 | 46.096% | 0.000% | 6.516% | 23.147% |
+| 18 | encoder.2.0.norm1 | 0.195711 | 0.244268 | 0.000% | 0.000% | 6.093% | 20.880% |
+| 18 | encoder.2.0.relu1 | 0.0622888 | 0.116009 | 61.830% | 0.000% | 7.544% | 26.992% |
+| 18 | encoder.2.0.norm2 | 0.0871528 | 0.0825084 | 0.000% | 0.000% | 5.172% | 19.965% |
+| 18 | encoder.2.0.relu2 | 0.0130723 | 0.0311099 | 73.075% | 0.000% | 11.725% | 33.747% |
+| 18 | encoder.2.1.norm1 | 0.187381 | 0.251556 | 0.000% | 0.000% | 6.961% | 22.941% |
+| 18 | encoder.2.1.relu1 | 0.0818183 | 0.142325 | 53.866% | 0.000% | 10.605% | 36.656% |
+| 18 | encoder.2.1.norm2 | 0.165532 | 0.123195 | 0.000% | 0.000% | 10.153% | 26.334% |
+| 18 | encoder.2.1.relu2 | 0.00312517 | 0.0173933 | 94.394% | 15.625% | 43.742% | 88.620% |
+| 18 | encoder.2.2.norm1 | 0.135774 | 0.292435 | 0.000% | 0.000% | 8.963% | 27.414% |
+| 18 | encoder.2.2.relu1 | 0.0418444 | 0.233358 | 65.639% | 0.000% | 16.151% | 48.448% |
+| 18 | encoder.2.2.norm2 | 0.0507231 | 0.105331 | 0.000% | 0.000% | 15.645% | 39.673% |
+| 18 | encoder.2.2.relu2 | 0.00837083 | 0.0795063 | 96.716% | 46.875% | 93.913% | 96.796% |
+| 18 | encoder.6 | 0.0744474 | 0.137886 | 60.815% | 10.156% | 6.434% | 14.966% |
+| 19 | encoder.norm0 | 0.0598314 | 0.0770446 | 0.000% | 0.000% | 4.604% | 17.098% |
+| 19 | encoder.1 | 0.0311421 | 0.0437356 | 47.078% | 0.000% | 6.056% | 23.049% |
+| 19 | encoder.2.0.norm1 | 0.192843 | 0.239419 | 0.000% | 0.000% | 5.704% | 20.453% |
+| 19 | encoder.2.0.relu1 | 0.0605424 | 0.113963 | 62.341% | 0.000% | 7.581% | 27.225% |
+| 19 | encoder.2.0.norm2 | 0.0864824 | 0.0849669 | 0.000% | 0.000% | 5.473% | 20.302% |
+| 19 | encoder.2.0.relu2 | 0.0140858 | 0.0327265 | 71.760% | 0.000% | 10.707% | 33.679% |
+| 19 | encoder.2.1.norm1 | 0.188432 | 0.254087 | 0.000% | 0.000% | 7.054% | 23.428% |
+| 19 | encoder.2.1.relu1 | 0.0821814 | 0.143201 | 53.605% | 0.000% | 11.617% | 35.642% |
+| 19 | encoder.2.1.norm2 | 0.167547 | 0.127707 | 0.000% | 0.000% | 10.525% | 26.560% |
+| 19 | encoder.2.1.relu2 | 0.00336171 | 0.018611 | 94.406% | 12.500% | 45.575% | 88.696% |
+| 19 | encoder.2.2.norm1 | 0.137085 | 0.292096 | 0.000% | 0.000% | 9.002% | 26.834% |
+| 19 | encoder.2.2.relu1 | 0.0435837 | 0.230586 | 64.627% | 0.000% | 15.384% | 46.868% |
+| 19 | encoder.2.2.norm2 | 0.0525079 | 0.111574 | 0.000% | 0.000% | 16.692% | 39.986% |
+| 19 | encoder.2.2.relu2 | 0.00917687 | 0.0878729 | 96.765% | 50.000% | 94.085% | 96.963% |
+| 19 | encoder.6 | 0.0745097 | 0.141897 | 61.569% | 10.938% | 6.831% | 15.146% |
+| 20 | encoder.norm0 | 0.0585285 | 0.0755396 | 0.000% | 0.000% | 4.663% | 17.707% |
+| 20 | encoder.1 | 0.0301224 | 0.0423746 | 47.348% | 0.000% | 6.371% | 23.462% |
+| 20 | encoder.2.0.norm1 | 0.188709 | 0.234627 | 0.000% | 0.000% | 6.054% | 20.857% |
+| 20 | encoder.2.0.relu1 | 0.059253 | 0.112246 | 62.361% | 0.000% | 7.865% | 27.905% |
+| 20 | encoder.2.0.norm2 | 0.0875938 | 0.0842275 | 0.000% | 0.000% | 5.234% | 20.211% |
+| 20 | encoder.2.0.relu2 | 0.0132142 | 0.0311957 | 72.909% | 0.000% | 12.929% | 35.805% |
+| 20 | encoder.2.1.norm1 | 0.178924 | 0.239635 | 0.000% | 0.000% | 7.084% | 23.195% |
+| 20 | encoder.2.1.relu1 | 0.0784532 | 0.13471 | 53.296% | 0.000% | 10.916% | 37.552% |
+| 20 | encoder.2.1.norm2 | 0.161034 | 0.12149 | 0.000% | 0.000% | 10.234% | 26.202% |
+| 20 | encoder.2.1.relu2 | 0.00318107 | 0.0176935 | 94.229% | 12.500% | 44.640% | 88.710% |
+| 20 | encoder.2.2.norm1 | 0.126732 | 0.268068 | 0.000% | 0.000% | 8.340% | 27.052% |
+| 20 | encoder.2.2.relu1 | 0.0400597 | 0.210947 | 65.180% | 0.000% | 17.588% | 48.591% |
+| 20 | encoder.2.2.norm2 | 0.0512454 | 0.106389 | 0.000% | 0.000% | 15.943% | 38.273% |
+| 20 | encoder.2.2.relu2 | 0.00826009 | 0.0816112 | 96.936% | 50.000% | 93.964% | 96.969% |
+| 20 | encoder.6 | 0.060115 | 0.121257 | 64.162% | 10.156% | 7.304% | 16.112% |
+| 21 | encoder.norm0 | 0.057954 | 0.0741944 | 0.000% | 0.000% | 4.568% | 17.481% |
+| 21 | encoder.1 | 0.030435 | 0.0421796 | 46.841% | 0.000% | 6.063% | 23.339% |
+| 21 | encoder.2.0.norm1 | 0.185111 | 0.23079 | 0.000% | 0.000% | 6.025% | 21.075% |
+| 21 | encoder.2.0.relu1 | 0.0589107 | 0.110944 | 62.439% | 0.000% | 7.881% | 27.020% |
+| 21 | encoder.2.0.norm2 | 0.0853969 | 0.0829959 | 0.000% | 0.000% | 5.032% | 19.842% |
+| 21 | encoder.2.0.relu2 | 0.0134214 | 0.0316709 | 72.681% | 0.000% | 13.199% | 36.271% |
+| 21 | encoder.2.1.norm1 | 0.182719 | 0.245179 | 0.000% | 0.000% | 6.825% | 22.969% |
+| 21 | encoder.2.1.relu1 | 0.0809794 | 0.138853 | 53.298% | 0.000% | 11.226% | 36.970% |
+| 21 | encoder.2.1.norm2 | 0.163548 | 0.122917 | 0.000% | 0.000% | 9.817% | 25.676% |
+| 21 | encoder.2.1.relu2 | 0.00341491 | 0.0188986 | 94.260% | 12.500% | 42.353% | 88.934% |
+| 21 | encoder.2.2.norm1 | 0.132019 | 0.27848 | 0.000% | 0.000% | 8.498% | 27.678% |
+| 21 | encoder.2.2.relu1 | 0.0414703 | 0.218619 | 65.126% | 0.000% | 17.791% | 47.921% |
+| 21 | encoder.2.2.norm2 | 0.0520765 | 0.117528 | 0.000% | 0.000% | 17.360% | 39.845% |
+| 21 | encoder.2.2.relu2 | 0.00907996 | 0.0910927 | 96.791% | 50.000% | 93.761% | 96.931% |
+| 21 | encoder.6 | 0.064245 | 0.126972 | 63.620% | 10.938% | 7.206% | 15.777% |
+| 22 | encoder.norm0 | 0.0578218 | 0.0742821 | 0.000% | 0.000% | 4.583% | 17.402% |
+| 22 | encoder.1 | 0.0303574 | 0.0422753 | 46.776% | 0.000% | 6.787% | 23.952% |
+| 22 | encoder.2.0.norm1 | 0.18469 | 0.227148 | 0.000% | 0.000% | 6.185% | 21.298% |
+| 22 | encoder.2.0.relu1 | 0.0555079 | 0.105814 | 63.588% | 0.000% | 8.430% | 28.932% |
+| 22 | encoder.2.0.norm2 | 0.0853758 | 0.0818045 | 0.000% | 0.000% | 5.557% | 20.996% |
+| 22 | encoder.2.0.relu2 | 0.0132121 | 0.0314135 | 72.690% | 0.000% | 15.006% | 37.106% |
+| 22 | encoder.2.1.norm1 | 0.179424 | 0.241596 | 0.000% | 0.000% | 7.012% | 23.316% |
+| 22 | encoder.2.1.relu1 | 0.0826696 | 0.138384 | 51.547% | 0.000% | 11.349% | 37.527% |
+| 22 | encoder.2.1.norm2 | 0.16036 | 0.119004 | 0.000% | 0.000% | 9.590% | 25.485% |
+| 22 | encoder.2.1.relu2 | 0.00367708 | 0.0196359 | 94.141% | 12.500% | 45.134% | 90.019% |
+| 22 | encoder.2.2.norm1 | 0.129673 | 0.261653 | 0.000% | 0.000% | 8.304% | 28.220% |
+| 22 | encoder.2.2.relu1 | 0.0403207 | 0.199658 | 64.861% | 0.000% | 18.326% | 47.889% |
+| 22 | encoder.2.2.norm2 | 0.0561253 | 0.118902 | 0.000% | 0.000% | 16.420% | 43.504% |
+| 22 | encoder.2.2.relu2 | 0.0091736 | 0.0923542 | 96.761% | 50.000% | 93.727% | 97.024% |
+| 22 | encoder.6 | 0.0664477 | 0.130675 | 62.711% | 10.156% | 7.495% | 15.721% |
+| 23 | encoder.norm0 | 0.0569931 | 0.0732234 | 0.000% | 0.000% | 4.577% | 17.401% |
+| 23 | encoder.1 | 0.0302715 | 0.0420052 | 46.431% | 0.000% | 6.482% | 23.728% |
+| 23 | encoder.2.0.norm1 | 0.179014 | 0.222348 | 0.000% | 0.000% | 6.137% | 21.533% |
+| 23 | encoder.2.0.relu1 | 0.0560394 | 0.10541 | 62.637% | 0.000% | 8.124% | 28.065% |
+| 23 | encoder.2.0.norm2 | 0.0866621 | 0.0813663 | 0.000% | 0.000% | 5.159% | 20.394% |
+| 23 | encoder.2.0.relu2 | 0.0127819 | 0.0309904 | 73.909% | 0.000% | 13.529% | 37.170% |
+| 23 | encoder.2.1.norm1 | 0.174895 | 0.237189 | 0.000% | 0.000% | 7.298% | 24.001% |
+| 23 | encoder.2.1.relu1 | 0.082274 | 0.138341 | 51.558% | 0.000% | 11.826% | 39.487% |
+| 23 | encoder.2.1.norm2 | 0.159995 | 0.116652 | 0.000% | 0.000% | 9.322% | 24.911% |
+| 23 | encoder.2.1.relu2 | 0.0036693 | 0.0191699 | 94.088% | 9.375% | 43.960% | 89.812% |
+| 23 | encoder.2.2.norm1 | 0.123411 | 0.239749 | 0.000% | 0.000% | 8.919% | 26.971% |
+| 23 | encoder.2.2.relu1 | 0.0378427 | 0.178592 | 65.533% | 0.000% | 15.085% | 47.039% |
+| 23 | encoder.2.2.norm2 | 0.0566134 | 0.123261 | 0.000% | 0.000% | 16.664% | 47.058% |
+| 23 | encoder.2.2.relu2 | 0.00939538 | 0.0965403 | 96.790% | 53.125% | 93.630% | 97.041% |
+| 23 | encoder.6 | 0.0694397 | 0.133773 | 61.729% | 10.938% | 7.219% | 15.403% |
+| 24 | encoder.norm0 | 0.0559429 | 0.0717662 | 0.000% | 0.000% | 4.897% | 17.769% |
+| 24 | encoder.1 | 0.0290979 | 0.0407907 | 46.834% | 0.000% | 6.289% | 23.844% |
+| 24 | encoder.2.0.norm1 | 0.17521 | 0.21709 | 0.000% | 0.000% | 5.875% | 21.293% |
+| 24 | encoder.2.0.relu1 | 0.0549978 | 0.104401 | 62.893% | 0.000% | 9.012% | 29.717% |
+| 24 | encoder.2.0.norm2 | 0.0846355 | 0.0807888 | 0.000% | 0.000% | 5.266% | 20.189% |
+| 24 | encoder.2.0.relu2 | 0.0124728 | 0.0304393 | 73.752% | 0.000% | 14.221% | 37.674% |
+| 24 | encoder.2.1.norm1 | 0.169071 | 0.231139 | 0.000% | 0.000% | 7.100% | 24.994% |
+| 24 | encoder.2.1.relu1 | 0.0794522 | 0.137378 | 51.748% | 0.000% | 12.661% | 40.466% |
+| 24 | encoder.2.1.norm2 | 0.157725 | 0.115351 | 0.000% | 0.000% | 9.469% | 25.154% |
+| 24 | encoder.2.1.relu2 | 0.00371742 | 0.0195592 | 94.171% | 18.750% | 45.178% | 90.373% |
+| 24 | encoder.2.2.norm1 | 0.121342 | 0.23669 | 0.000% | 0.000% | 9.086% | 26.903% |
+| 24 | encoder.2.2.relu1 | 0.0363635 | 0.176008 | 65.555% | 0.000% | 14.111% | 46.243% |
+| 24 | encoder.2.2.norm2 | 0.0569473 | 0.129361 | 0.000% | 0.000% | 17.117% | 49.001% |
+| 24 | encoder.2.2.relu2 | 0.00975702 | 0.103019 | 96.637% | 50.000% | 93.397% | 97.059% |
+| 24 | encoder.6 | 0.067798 | 0.134572 | 62.221% | 10.156% | 7.170% | 16.126% |
+| 25 | encoder.norm0 | 0.0546914 | 0.0707821 | 0.000% | 0.000% | 4.730% | 17.706% |
+| 25 | encoder.1 | 0.0284701 | 0.0402967 | 46.398% | 0.000% | 6.047% | 23.504% |
+| 25 | encoder.2.0.norm1 | 0.17211 | 0.213487 | 0.000% | 0.000% | 6.179% | 21.018% |
+| 25 | encoder.2.0.relu1 | 0.0544408 | 0.102211 | 62.407% | 0.000% | 7.828% | 27.916% |
+| 25 | encoder.2.0.norm2 | 0.0865617 | 0.0826853 | 0.000% | 0.000% | 5.387% | 20.607% |
+| 25 | encoder.2.0.relu2 | 0.0122576 | 0.0302831 | 74.082% | 0.000% | 11.812% | 36.624% |
+| 25 | encoder.2.1.norm1 | 0.167094 | 0.230174 | 0.000% | 0.000% | 7.214% | 25.354% |
+| 25 | encoder.2.1.relu1 | 0.0809145 | 0.138588 | 50.956% | 0.000% | 12.707% | 40.718% |
+| 25 | encoder.2.1.norm2 | 0.154725 | 0.113732 | 0.000% | 0.000% | 9.501% | 25.185% |
+| 25 | encoder.2.1.relu2 | 0.00384358 | 0.0198687 | 94.045% | 15.625% | 44.548% | 90.530% |
+| 25 | encoder.2.2.norm1 | 0.118347 | 0.230925 | 0.000% | 0.000% | 9.778% | 27.033% |
+| 25 | encoder.2.2.relu1 | 0.0344892 | 0.170715 | 67.401% | 0.000% | 13.436% | 46.364% |
+| 25 | encoder.2.2.norm2 | 0.0560461 | 0.130988 | 0.000% | 0.000% | 17.775% | 47.507% |
+| 25 | encoder.2.2.relu2 | 0.00992246 | 0.107964 | 96.723% | 53.125% | 93.229% | 97.132% |
+| 25 | encoder.6 | 0.0841733 | 0.153246 | 57.936% | 10.156% | 6.915% | 15.012% |
+| 26 | encoder.norm0 | 0.0542774 | 0.0703679 | 0.000% | 0.000% | 5.071% | 18.163% |
+| 26 | encoder.1 | 0.0279629 | 0.0398176 | 47.208% | 0.000% | 6.354% | 23.980% |
+| 26 | encoder.2.0.norm1 | 0.168357 | 0.209491 | 0.000% | 0.000% | 6.083% | 21.329% |
+| 26 | encoder.2.0.relu1 | 0.0534711 | 0.0994226 | 62.453% | 0.000% | 9.409% | 28.695% |
+| 26 | encoder.2.0.norm2 | 0.0839219 | 0.0799882 | 0.000% | 0.000% | 5.152% | 19.910% |
+| 26 | encoder.2.0.relu2 | 0.0124359 | 0.0302825 | 73.722% | 0.000% | 14.923% | 37.681% |
+| 26 | encoder.2.1.norm1 | 0.163907 | 0.225338 | 0.000% | 0.000% | 7.217% | 26.069% |
+| 26 | encoder.2.1.relu1 | 0.0821465 | 0.138294 | 50.249% | 0.000% | 13.074% | 42.092% |
+| 26 | encoder.2.1.norm2 | 0.153112 | 0.111516 | 0.000% | 0.000% | 9.165% | 24.604% |
+| 26 | encoder.2.1.relu2 | 0.00390899 | 0.0202536 | 94.108% | 18.750% | 44.583% | 90.871% |
+| 26 | encoder.2.2.norm1 | 0.115553 | 0.227482 | 0.000% | 0.000% | 10.346% | 27.931% |
+| 26 | encoder.2.2.relu1 | 0.0326548 | 0.170764 | 67.473% | 0.000% | 13.442% | 46.468% |
+| 26 | encoder.2.2.norm2 | 0.0578206 | 0.139935 | 0.000% | 0.000% | 17.341% | 50.017% |
+| 26 | encoder.2.2.relu2 | 0.00985429 | 0.114132 | 96.623% | 56.250% | 92.610% | 97.068% |
+| 26 | encoder.6 | 0.0727876 | 0.138797 | 60.023% | 10.938% | 7.444% | 15.573% |
+| 27 | encoder.norm0 | 0.0532336 | 0.0685892 | 0.000% | 0.000% | 4.466% | 17.138% |
+| 27 | encoder.1 | 0.0277624 | 0.0395724 | 47.687% | 0.000% | 6.574% | 24.074% |
+| 27 | encoder.2.0.norm1 | 0.16541 | 0.205187 | 0.000% | 0.000% | 6.141% | 20.910% |
+| 27 | encoder.2.0.relu1 | 0.052942 | 0.0989004 | 62.250% | 0.000% | 8.905% | 30.080% |
+| 27 | encoder.2.0.norm2 | 0.0832975 | 0.0809958 | 0.000% | 0.000% | 5.064% | 19.982% |
+| 27 | encoder.2.0.relu2 | 0.01314 | 0.0311937 | 72.711% | 0.000% | 13.207% | 37.644% |
+| 27 | encoder.2.1.norm1 | 0.163388 | 0.223842 | 0.000% | 0.000% | 6.989% | 26.076% |
+| 27 | encoder.2.1.relu1 | 0.0815517 | 0.137746 | 50.213% | 0.000% | 13.513% | 41.598% |
+| 27 | encoder.2.1.norm2 | 0.150645 | 0.110177 | 0.000% | 0.000% | 9.229% | 24.639% |
+| 27 | encoder.2.1.relu2 | 0.00424545 | 0.0219002 | 93.937% | 18.750% | 46.942% | 90.963% |
+| 27 | encoder.2.2.norm1 | 0.115044 | 0.235048 | 0.000% | 0.000% | 10.788% | 28.735% |
+| 27 | encoder.2.2.relu1 | 0.0333361 | 0.180764 | 66.792% | 0.000% | 14.010% | 46.937% |
+| 27 | encoder.2.2.norm2 | 0.06205 | 0.151428 | 0.000% | 0.000% | 17.113% | 49.624% |
+| 27 | encoder.2.2.relu2 | 0.0102813 | 0.124576 | 96.751% | 50.000% | 91.968% | 97.295% |
+| 27 | encoder.6 | 0.0693189 | 0.135466 | 61.308% | 10.938% | 7.758% | 16.436% |
+| 28 | encoder.norm0 | 0.052903 | 0.0679268 | 0.000% | 0.000% | 4.786% | 17.483% |
+| 28 | encoder.1 | 0.0277532 | 0.0390493 | 46.502% | 0.000% | 6.187% | 23.644% |
+| 28 | encoder.2.0.norm1 | 0.162006 | 0.201445 | 0.000% | 0.000% | 6.147% | 20.877% |
+| 28 | encoder.2.0.relu1 | 0.0520758 | 0.097314 | 62.285% | 0.000% | 9.288% | 29.705% |
+| 28 | encoder.2.0.norm2 | 0.0818861 | 0.0779689 | 0.000% | 0.000% | 4.992% | 19.574% |
+| 28 | encoder.2.0.relu2 | 0.0126217 | 0.030494 | 73.215% | 0.000% | 13.775% | 38.548% |
+| 28 | encoder.2.1.norm1 | 0.160833 | 0.222728 | 0.000% | 0.000% | 7.405% | 26.980% |
+| 28 | encoder.2.1.relu1 | 0.0813425 | 0.140109 | 50.277% | 0.000% | 13.889% | 43.077% |
+| 28 | encoder.2.1.norm2 | 0.150358 | 0.110265 | 0.000% | 0.000% | 9.064% | 24.460% |
+| 28 | encoder.2.1.relu2 | 0.00440129 | 0.0228372 | 93.948% | 15.625% | 48.072% | 91.782% |
+| 28 | encoder.2.2.norm1 | 0.111684 | 0.231893 | 0.000% | 0.000% | 11.755% | 30.471% |
+| 28 | encoder.2.2.relu1 | 0.0303767 | 0.178073 | 67.722% | 0.000% | 13.432% | 46.217% |
+| 28 | encoder.2.2.norm2 | 0.0595409 | 0.16054 | 0.000% | 0.000% | 19.356% | 52.327% |
+| 28 | encoder.2.2.relu2 | 0.0109311 | 0.136342 | 96.855% | 50.000% | 90.940% | 97.330% |
+| 28 | encoder.6 | 0.0896566 | 0.156095 | 55.386% | 10.156% | 6.944% | 14.462% |
+| 29 | encoder.norm0 | 0.0510334 | 0.0653197 | 0.000% | 0.000% | 4.780% | 17.380% |
+| 29 | encoder.1 | 0.0267019 | 0.0375116 | 46.301% | 0.000% | 6.371% | 24.153% |
+| 29 | encoder.2.0.norm1 | 0.157024 | 0.195071 | 0.000% | 0.000% | 6.251% | 21.052% |
+| 29 | encoder.2.0.relu1 | 0.0502449 | 0.0938938 | 62.291% | 0.000% | 8.263% | 29.441% |
+| 29 | encoder.2.0.norm2 | 0.0795695 | 0.0752998 | 0.000% | 0.000% | 5.204% | 19.453% |
+| 29 | encoder.2.0.relu2 | 0.0126196 | 0.0305933 | 73.568% | 0.000% | 14.662% | 40.081% |
+| 29 | encoder.2.1.norm1 | 0.155756 | 0.21552 | 0.000% | 0.000% | 7.391% | 26.613% |
+| 29 | encoder.2.1.relu1 | 0.0782848 | 0.135548 | 50.572% | 0.000% | 14.700% | 43.935% |
+| 29 | encoder.2.1.norm2 | 0.14558 | 0.106134 | 0.000% | 0.000% | 9.145% | 24.483% |
+| 29 | encoder.2.1.relu2 | 0.00424996 | 0.0222838 | 93.890% | 18.750% | 47.804% | 91.367% |
+| 29 | encoder.2.2.norm1 | 0.103771 | 0.2121 | 0.000% | 0.000% | 12.351% | 32.832% |
+| 29 | encoder.2.2.relu1 | 0.0266247 | 0.160067 | 67.979% | 0.000% | 13.361% | 45.454% |
+| 29 | encoder.2.2.norm2 | 0.0594453 | 0.164845 | 0.000% | 0.000% | 19.556% | 54.826% |
+| 29 | encoder.2.2.relu2 | 0.0111961 | 0.140571 | 96.983% | 59.375% | 91.393% | 97.551% |
+| 29 | encoder.6 | 0.0721287 | 0.136661 | 59.528% | 10.156% | 7.919% | 16.145% |
+| 30 | encoder.norm0 | 0.0496118 | 0.0641452 | 0.000% | 0.000% | 4.702% | 17.625% |
+| 30 | encoder.1 | 0.0257175 | 0.0368031 | 46.806% | 0.000% | 6.401% | 23.947% |
+| 30 | encoder.2.0.norm1 | 0.154436 | 0.192294 | 0.000% | 0.000% | 6.133% | 20.767% |
+| 30 | encoder.2.0.relu1 | 0.0499519 | 0.0929616 | 62.048% | 0.000% | 8.691% | 29.202% |
+| 30 | encoder.2.0.norm2 | 0.078452 | 0.0760069 | 0.000% | 0.000% | 5.041% | 19.653% |
+| 30 | encoder.2.0.relu2 | 0.0122489 | 0.0296671 | 72.835% | 0.000% | 13.134% | 39.335% |
+| 30 | encoder.2.1.norm1 | 0.151459 | 0.211772 | 0.000% | 0.000% | 7.700% | 27.689% |
+| 30 | encoder.2.1.relu1 | 0.0783771 | 0.136206 | 49.778% | 0.000% | 14.800% | 44.085% |
+| 30 | encoder.2.1.norm2 | 0.14459 | 0.10749 | 0.000% | 0.000% | 9.523% | 24.596% |
+| 30 | encoder.2.1.relu2 | 0.00452965 | 0.0237328 | 93.723% | 18.750% | 49.392% | 91.288% |
+| 30 | encoder.2.2.norm1 | 0.0994051 | 0.216577 | 0.000% | 0.000% | 12.558% | 34.423% |
+| 30 | encoder.2.2.relu1 | 0.0255185 | 0.166757 | 67.521% | 0.000% | 12.615% | 45.895% |
+| 30 | encoder.2.2.norm2 | 0.0603027 | 0.180364 | 0.000% | 0.000% | 20.905% | 57.610% |
+| 30 | encoder.2.2.relu2 | 0.0123274 | 0.154683 | 96.902% | 46.875% | 90.962% | 97.486% |
+| 30 | encoder.6 | 0.101753 | 0.163508 | 51.872% | 10.156% | 5.911% | 13.100% |
+| 31 | encoder.norm0 | 0.0485305 | 0.0626686 | 0.000% | 0.000% | 4.647% | 17.128% |
+| 31 | encoder.1 | 0.0252125 | 0.0363215 | 47.367% | 0.000% | 6.468% | 24.764% |
+| 31 | encoder.2.0.norm1 | 0.149413 | 0.186335 | 0.000% | 0.000% | 6.225% | 21.478% |
+| 31 | encoder.2.0.relu1 | 0.0486506 | 0.0894535 | 61.580% | 0.000% | 8.978% | 29.123% |
+| 31 | encoder.2.0.norm2 | 0.0773014 | 0.0733698 | 0.000% | 0.000% | 5.088% | 19.796% |
+| 31 | encoder.2.0.relu2 | 0.012157 | 0.0296489 | 73.365% | 0.000% | 13.707% | 40.172% |
+| 31 | encoder.2.1.norm1 | 0.148888 | 0.207736 | 0.000% | 0.000% | 7.954% | 27.645% |
+| 31 | encoder.2.1.relu1 | 0.0763952 | 0.134523 | 50.498% | 0.000% | 15.501% | 44.930% |
+| 31 | encoder.2.1.norm2 | 0.142318 | 0.105361 | 0.000% | 0.000% | 9.510% | 24.813% |
+| 31 | encoder.2.1.relu2 | 0.00444493 | 0.023299 | 93.695% | 18.750% | 50.828% | 91.525% |
+| 31 | encoder.2.2.norm1 | 0.0907051 | 0.182574 | 0.000% | 0.000% | 13.042% | 35.291% |
+| 31 | encoder.2.2.relu1 | 0.0223091 | 0.129191 | 67.364% | 0.000% | 13.841% | 45.551% |
+| 31 | encoder.2.2.norm2 | 0.0616549 | 0.181274 | 0.000% | 0.000% | 21.002% | 58.460% |
+| 31 | encoder.2.2.relu2 | 0.0127025 | 0.160396 | 97.076% | 59.375% | 91.286% | 97.574% |
+| 31 | encoder.6 | 0.0598694 | 0.129451 | 63.814% | 10.156% | 9.800% | 19.105% |
+| 32 | encoder.norm0 | 0.0467895 | 0.0604227 | 0.000% | 0.000% | 4.488% | 17.027% |
+| 32 | encoder.1 | 0.0244668 | 0.0352892 | 47.257% | 0.000% | 6.623% | 24.985% |
+| 32 | encoder.2.0.norm1 | 0.144755 | 0.18071 | 0.000% | 0.000% | 6.413% | 21.082% |
+| 32 | encoder.2.0.relu1 | 0.0476419 | 0.0870935 | 61.244% | 0.000% | 9.049% | 29.763% |
+| 32 | encoder.2.0.norm2 | 0.0751957 | 0.0715204 | 0.000% | 0.000% | 5.101% | 19.826% |
+| 32 | encoder.2.0.relu2 | 0.0116746 | 0.0287246 | 73.434% | 0.000% | 14.524% | 41.313% |
+| 32 | encoder.2.1.norm1 | 0.141902 | 0.198575 | 0.000% | 0.000% | 8.191% | 27.606% |
+| 32 | encoder.2.1.relu1 | 0.0736264 | 0.128193 | 49.704% | 0.000% | 15.786% | 44.851% |
+| 32 | encoder.2.1.norm2 | 0.138474 | 0.103705 | 0.000% | 0.000% | 9.648% | 25.149% |
+| 32 | encoder.2.1.relu2 | 0.00434318 | 0.0228558 | 93.711% | 18.750% | 50.617% | 91.526% |
+| 32 | encoder.2.2.norm1 | 0.085439 | 0.172305 | 0.000% | 0.000% | 12.931% | 36.181% |
+| 32 | encoder.2.2.relu1 | 0.0206135 | 0.121467 | 67.553% | 0.000% | 15.973% | 45.928% |
+| 32 | encoder.2.2.norm2 | 0.0601177 | 0.183962 | 0.000% | 0.000% | 21.777% | 61.199% |
+| 32 | encoder.2.2.relu2 | 0.0128953 | 0.162753 | 96.917% | 56.250% | 90.784% | 97.572% |
+| 32 | encoder.6 | 0.0987551 | 0.159847 | 51.273% | 10.156% | 6.428% | 13.867% |
+| 33 | encoder.norm0 | 0.0455487 | 0.0588523 | 0.000% | 0.000% | 4.474% | 16.685% |
+| 33 | encoder.1 | 0.0240111 | 0.0346145 | 47.003% | 0.000% | 6.635% | 25.031% |
+| 33 | encoder.2.0.norm1 | 0.14268 | 0.178098 | 0.000% | 0.000% | 6.444% | 21.112% |
+| 33 | encoder.2.0.relu1 | 0.0472846 | 0.0864702 | 61.245% | 0.000% | 8.980% | 29.550% |
+| 33 | encoder.2.0.norm2 | 0.0746206 | 0.070415 | 0.000% | 0.000% | 4.953% | 19.213% |
+| 33 | encoder.2.0.relu2 | 0.0113418 | 0.0280102 | 73.838% | 0.000% | 13.087% | 41.080% |
+| 33 | encoder.2.1.norm1 | 0.138377 | 0.193181 | 0.000% | 0.000% | 8.230% | 27.668% |
+| 33 | encoder.2.1.relu1 | 0.0723232 | 0.12544 | 49.896% | 0.000% | 15.743% | 44.358% |
+| 33 | encoder.2.1.norm2 | 0.137317 | 0.102107 | 0.000% | 0.000% | 9.547% | 25.169% |
+| 33 | encoder.2.1.relu2 | 0.00441917 | 0.0234721 | 93.621% | 18.750% | 51.028% | 91.634% |
+| 33 | encoder.2.2.norm1 | 0.0811618 | 0.167517 | 0.000% | 0.000% | 13.185% | 36.809% |
+| 33 | encoder.2.2.relu1 | 0.0189634 | 0.11857 | 68.537% | 0.000% | 16.251% | 45.454% |
+| 33 | encoder.2.2.norm2 | 0.0618995 | 0.191842 | 0.000% | 0.000% | 22.338% | 61.906% |
+| 33 | encoder.2.2.relu2 | 0.0133717 | 0.169795 | 97.085% | 59.375% | 91.548% | 97.716% |
+| 33 | encoder.6 | 0.0610794 | 0.12866 | 62.134% | 10.156% | 9.654% | 18.675% |
+| 34 | encoder.norm0 | 0.0445024 | 0.0577939 | 0.000% | 0.000% | 4.499% | 17.395% |
+| 34 | encoder.1 | 0.0235715 | 0.0340181 | 46.426% | 0.000% | 6.612% | 24.217% |
+| 34 | encoder.2.0.norm1 | 0.13858 | 0.172703 | 0.000% | 0.000% | 6.265% | 20.897% |
+| 34 | encoder.2.0.relu1 | 0.0454093 | 0.0836251 | 61.509% | 0.000% | 8.782% | 29.286% |
+| 34 | encoder.2.0.norm2 | 0.0733814 | 0.069824 | 0.000% | 0.000% | 5.061% | 19.531% |
+| 34 | encoder.2.0.relu2 | 0.011179 | 0.0277134 | 73.789% | 0.000% | 12.745% | 41.585% |
+| 34 | encoder.2.1.norm1 | 0.134663 | 0.189161 | 0.000% | 0.000% | 8.246% | 27.960% |
+| 34 | encoder.2.1.relu1 | 0.0706657 | 0.12366 | 49.482% | 0.000% | 15.712% | 44.422% |
+| 34 | encoder.2.1.norm2 | 0.135013 | 0.100438 | 0.000% | 0.000% | 9.511% | 25.087% |
+| 34 | encoder.2.1.relu2 | 0.00445298 | 0.0236469 | 93.533% | 21.875% | 51.196% | 91.499% |
+| 34 | encoder.2.2.norm1 | 0.0768555 | 0.166573 | 0.000% | 0.000% | 13.768% | 37.463% |
+| 34 | encoder.2.2.relu1 | 0.0185997 | 0.120453 | 67.292% | 0.000% | 17.076% | 45.276% |
+| 34 | encoder.2.2.norm2 | 0.0620565 | 0.197877 | 0.000% | 0.000% | 22.899% | 62.638% |
+| 34 | encoder.2.2.relu2 | 0.0137747 | 0.175595 | 96.933% | 59.375% | 91.293% | 97.679% |
+| 34 | encoder.6 | 0.083588 | 0.146774 | 55.052% | 10.156% | 7.127% | 14.821% |
+| 35 | encoder.norm0 | 0.0437674 | 0.0569556 | 0.000% | 0.000% | 4.353% | 16.764% |
+| 35 | encoder.1 | 0.0232593 | 0.033855 | 47.364% | 0.000% | 6.686% | 24.729% |
+| 35 | encoder.2.0.norm1 | 0.134697 | 0.168226 | 0.000% | 0.000% | 6.290% | 20.906% |
+| 35 | encoder.2.0.relu1 | 0.0443988 | 0.0811158 | 61.345% | 0.000% | 8.715% | 29.866% |
+| 35 | encoder.2.0.norm2 | 0.0705849 | 0.0671424 | 0.000% | 0.000% | 5.030% | 19.480% |
+| 35 | encoder.2.0.relu2 | 0.0112986 | 0.0273205 | 72.850% | 0.000% | 13.179% | 38.881% |
+| 35 | encoder.2.1.norm1 | 0.128703 | 0.181026 | 0.000% | 0.000% | 8.605% | 28.096% |
+| 35 | encoder.2.1.relu1 | 0.068607 | 0.119633 | 49.268% | 0.000% | 16.141% | 44.852% |
+| 35 | encoder.2.1.norm2 | 0.132076 | 0.0974627 | 0.000% | 0.000% | 9.543% | 25.163% |
+| 35 | encoder.2.1.relu2 | 0.00433702 | 0.0227538 | 93.488% | 15.625% | 51.186% | 91.349% |
+| 35 | encoder.2.2.norm1 | 0.0708325 | 0.14975 | 0.000% | 0.000% | 14.606% | 38.650% |
+| 35 | encoder.2.2.relu1 | 0.016643 | 0.104117 | 67.618% | 0.000% | 18.501% | 46.357% |
+| 35 | encoder.2.2.norm2 | 0.0612268 | 0.197334 | 0.000% | 0.000% | 23.463% | 63.462% |
+| 35 | encoder.2.2.relu2 | 0.0138312 | 0.176475 | 97.073% | 62.500% | 91.476% | 97.786% |
+| 35 | encoder.6 | 0.062284 | 0.126637 | 60.806% | 10.156% | 8.667% | 17.840% |
+| 36 | encoder.norm0 | 0.0420708 | 0.0544069 | 0.000% | 0.000% | 4.292% | 16.968% |
+| 36 | encoder.1 | 0.0225845 | 0.0324417 | 46.404% | 0.000% | 6.908% | 24.889% |
+| 36 | encoder.2.0.norm1 | 0.130724 | 0.163534 | 0.000% | 0.000% | 6.351% | 20.893% |
+| 36 | encoder.2.0.relu1 | 0.0432934 | 0.0794103 | 61.228% | 0.000% | 9.151% | 30.049% |
+| 36 | encoder.2.0.norm2 | 0.0701397 | 0.0674111 | 0.000% | 0.000% | 5.143% | 19.771% |
+| 36 | encoder.2.0.relu2 | 0.0114096 | 0.0273373 | 72.651% | 0.000% | 12.721% | 40.851% |
+| 36 | encoder.2.1.norm1 | 0.125985 | 0.177363 | 0.000% | 0.000% | 8.723% | 28.437% |
+| 36 | encoder.2.1.relu1 | 0.0675297 | 0.117946 | 49.013% | 0.000% | 16.274% | 44.838% |
+| 36 | encoder.2.1.norm2 | 0.129727 | 0.0962605 | 0.000% | 0.000% | 9.378% | 24.935% |
+| 36 | encoder.2.1.relu2 | 0.00439573 | 0.0231746 | 93.505% | 15.625% | 52.257% | 91.493% |
+| 36 | encoder.2.2.norm1 | 0.0681793 | 0.143852 | 0.000% | 0.000% | 14.921% | 38.865% |
+| 36 | encoder.2.2.relu1 | 0.0161686 | 0.098347 | 66.936% | 0.000% | 18.535% | 44.922% |
+| 36 | encoder.2.2.norm2 | 0.0610867 | 0.202754 | 0.000% | 0.000% | 24.578% | 64.192% |
+| 36 | encoder.2.2.relu2 | 0.0143087 | 0.182367 | 97.034% | 59.375% | 91.226% | 97.843% |
+| 36 | encoder.6 | 0.0763665 | 0.13854 | 55.879% | 10.156% | 7.727% | 15.745% |
+| 37 | encoder.norm0 | 0.0415011 | 0.0537881 | 0.000% | 0.000% | 4.415% | 17.025% |
+| 37 | encoder.1 | 0.0221763 | 0.0318865 | 46.664% | 0.000% | 6.719% | 24.623% |
+| 37 | encoder.2.0.norm1 | 0.127507 | 0.159995 | 0.000% | 0.000% | 6.298% | 20.734% |
+| 37 | encoder.2.0.relu1 | 0.0426426 | 0.077824 | 60.973% | 0.000% | 9.308% | 29.837% |
+| 37 | encoder.2.0.norm2 | 0.0687264 | 0.0656647 | 0.000% | 0.000% | 5.085% | 19.863% |
+| 37 | encoder.2.0.relu2 | 0.0107371 | 0.0260622 | 72.896% | 0.000% | 12.218% | 39.907% |
+| 37 | encoder.2.1.norm1 | 0.122587 | 0.174126 | 0.000% | 0.000% | 8.735% | 28.705% |
+| 37 | encoder.2.1.relu1 | 0.0656554 | 0.11679 | 49.191% | 0.000% | 16.307% | 45.729% |
+| 37 | encoder.2.1.norm2 | 0.13022 | 0.0958895 | 0.000% | 0.000% | 9.244% | 25.152% |
+| 37 | encoder.2.1.relu2 | 0.00439584 | 0.0234823 | 93.488% | 21.875% | 51.342% | 91.663% |
+| 37 | encoder.2.2.norm1 | 0.0657087 | 0.144392 | 0.000% | 0.000% | 15.365% | 39.281% |
+| 37 | encoder.2.2.relu1 | 0.0156755 | 0.101581 | 67.408% | 0.000% | 19.246% | 46.214% |
+| 37 | encoder.2.2.norm2 | 0.061198 | 0.209145 | 0.000% | 0.000% | 25.507% | 64.707% |
+| 37 | encoder.2.2.relu2 | 0.0146691 | 0.187551 | 96.990% | 62.500% | 91.179% | 97.871% |
+| 37 | encoder.6 | 0.073981 | 0.136428 | 56.349% | 10.156% | 8.063% | 15.974% |
+| 38 | encoder.norm0 | 0.0402153 | 0.0522642 | 0.000% | 0.000% | 4.475% | 17.145% |
+| 38 | encoder.1 | 0.022118 | 0.0316235 | 45.187% | 0.000% | 6.858% | 24.878% |
+| 38 | encoder.2.0.norm1 | 0.124526 | 0.155951 | 0.000% | 0.000% | 6.296% | 20.693% |
+| 38 | encoder.2.0.relu1 | 0.041943 | 0.0760197 | 60.741% | 0.000% | 9.055% | 30.055% |
+| 38 | encoder.2.0.norm2 | 0.06746 | 0.0647687 | 0.000% | 0.000% | 5.147% | 19.689% |
+| 38 | encoder.2.0.relu2 | 0.0111736 | 0.0266696 | 72.309% | 0.000% | 12.604% | 39.576% |
+| 38 | encoder.2.1.norm1 | 0.119884 | 0.170923 | 0.000% | 0.000% | 8.810% | 29.005% |
+| 38 | encoder.2.1.relu1 | 0.0646709 | 0.11543 | 49.012% | 0.000% | 16.330% | 45.823% |
+| 38 | encoder.2.1.norm2 | 0.128664 | 0.0942849 | 0.000% | 0.000% | 9.285% | 24.989% |
+| 38 | encoder.2.1.relu2 | 0.00443703 | 0.0232287 | 93.440% | 18.750% | 51.248% | 91.590% |
+| 38 | encoder.2.2.norm1 | 0.0636005 | 0.133868 | 0.000% | 0.000% | 15.541% | 39.237% |
+| 38 | encoder.2.2.relu1 | 0.0151806 | 0.089805 | 66.995% | 0.000% | 19.695% | 45.596% |
+| 38 | encoder.2.2.norm2 | 0.0620317 | 0.215569 | 0.000% | 0.000% | 26.090% | 66.269% |
+| 38 | encoder.2.2.relu2 | 0.0151787 | 0.194213 | 96.956% | 56.250% | 90.986% | 97.893% |
+| 38 | encoder.6 | 0.0815406 | 0.140906 | 54.099% | 10.156% | 6.949% | 14.457% |
+| 39 | encoder.norm0 | 0.0393412 | 0.0511841 | 0.000% | 0.000% | 4.475% | 17.324% |
+| 39 | encoder.1 | 0.0212957 | 0.0309384 | 46.399% | 0.000% | 7.372% | 26.052% |
+| 39 | encoder.2.0.norm1 | 0.121389 | 0.152048 | 0.000% | 0.000% | 6.223% | 20.676% |
+| 39 | encoder.2.0.relu1 | 0.0411109 | 0.0744415 | 60.514% | 0.000% | 9.233% | 29.938% |
+| 39 | encoder.2.0.norm2 | 0.0660448 | 0.0634827 | 0.000% | 0.000% | 5.276% | 19.667% |
+| 39 | encoder.2.0.relu2 | 0.0107412 | 0.0258902 | 72.478% | 0.000% | 12.309% | 39.581% |
+| 39 | encoder.2.1.norm1 | 0.115473 | 0.164543 | 0.000% | 0.000% | 9.124% | 29.174% |
+| 39 | encoder.2.1.relu1 | 0.0632366 | 0.112272 | 48.644% | 0.000% | 16.660% | 45.998% |
+| 39 | encoder.2.1.norm2 | 0.126083 | 0.0923764 | 0.000% | 0.000% | 9.275% | 25.034% |
+| 39 | encoder.2.1.relu2 | 0.00448744 | 0.0235603 | 93.377% | 18.750% | 52.430% | 91.761% |
+| 39 | encoder.2.2.norm1 | 0.0613458 | 0.129026 | 0.000% | 0.000% | 15.758% | 39.423% |
+| 39 | encoder.2.2.relu1 | 0.0146934 | 0.0859328 | 67.003% | 0.000% | 20.163% | 46.060% |
+| 39 | encoder.2.2.norm2 | 0.0624928 | 0.217742 | 0.000% | 0.000% | 26.520% | 66.828% |
+| 39 | encoder.2.2.relu2 | 0.0153508 | 0.196068 | 96.892% | 62.500% | 90.822% | 97.880% |
+| 39 | encoder.6 | 0.09382 | 0.153043 | 50.215% | 10.156% | 6.660% | 14.614% |
+| 40 | encoder.norm0 | 0.0390102 | 0.0506038 | 0.000% | 0.000% | 4.397% | 16.896% |
+| 40 | encoder.1 | 0.0213278 | 0.0306842 | 45.617% | 0.000% | 6.944% | 24.908% |
+| 40 | encoder.2.0.norm1 | 0.118967 | 0.149419 | 0.000% | 0.000% | 6.281% | 20.632% |
+| 40 | encoder.2.0.relu1 | 0.0402582 | 0.072891 | 60.422% | 0.000% | 8.969% | 29.910% |
+| 40 | encoder.2.0.norm2 | 0.0654015 | 0.0631074 | 0.000% | 0.000% | 5.219% | 19.893% |
+| 40 | encoder.2.0.relu2 | 0.0107384 | 0.0258504 | 72.337% | 0.000% | 12.808% | 41.150% |
+| 40 | encoder.2.1.norm1 | 0.112736 | 0.162289 | 0.000% | 0.000% | 9.268% | 29.855% |
+| 40 | encoder.2.1.relu1 | 0.0623439 | 0.112109 | 48.656% | 0.000% | 16.758% | 46.427% |
+| 40 | encoder.2.1.norm2 | 0.125569 | 0.0909979 | 0.000% | 0.000% | 9.150% | 24.784% |
+| 40 | encoder.2.1.relu2 | 0.00453787 | 0.0239205 | 93.406% | 18.750% | 52.793% | 91.938% |
+| 40 | encoder.2.2.norm1 | 0.0601987 | 0.127453 | 0.000% | 0.000% | 15.691% | 39.225% |
+| 40 | encoder.2.2.relu1 | 0.0144189 | 0.0857168 | 66.782% | 0.000% | 20.042% | 45.952% |
+| 40 | encoder.2.2.norm2 | 0.0628365 | 0.225551 | 0.000% | 0.000% | 27.538% | 68.129% |
+| 40 | encoder.2.2.relu2 | 0.015912 | 0.203281 | 96.852% | 62.500% | 90.668% | 97.947% |
+| 40 | encoder.6 | 0.0755446 | 0.138221 | 55.923% | 10.156% | 7.852% | 16.033% |
+| 41 | encoder.norm0 | 0.0379679 | 0.0493916 | 0.000% | 0.000% | 4.465% | 17.313% |
+| 41 | encoder.1 | 0.0208859 | 0.0300792 | 45.265% | 0.000% | 7.331% | 25.601% |
+| 41 | encoder.2.0.norm1 | 0.116069 | 0.14577 | 0.000% | 0.000% | 6.329% | 20.675% |
+| 41 | encoder.2.0.relu1 | 0.0396269 | 0.0714025 | 60.328% | 0.000% | 9.658% | 30.405% |
+| 41 | encoder.2.0.norm2 | 0.0641584 | 0.0612134 | 0.000% | 0.000% | 5.262% | 19.723% |
+| 41 | encoder.2.0.relu2 | 0.0103949 | 0.0252235 | 72.722% | 0.000% | 13.155% | 41.032% |
+| 41 | encoder.2.1.norm1 | 0.109997 | 0.158508 | 0.000% | 0.000% | 9.429% | 29.902% |
+| 41 | encoder.2.1.relu1 | 0.0614241 | 0.110538 | 48.212% | 0.000% | 16.885% | 46.446% |
+| 41 | encoder.2.1.norm2 | 0.123689 | 0.0896052 | 0.000% | 0.000% | 9.068% | 24.600% |
+| 41 | encoder.2.1.relu2 | 0.00451672 | 0.0238791 | 93.418% | 18.750% | 52.913% | 92.015% |
+| 41 | encoder.2.2.norm1 | 0.0584482 | 0.124 | 0.000% | 0.000% | 15.857% | 39.472% |
+| 41 | encoder.2.2.relu1 | 0.013958 | 0.0830174 | 67.094% | 0.000% | 20.451% | 47.079% |
+| 41 | encoder.2.2.norm2 | 0.0628757 | 0.227229 | 0.000% | 0.000% | 28.056% | 67.870% |
+| 41 | encoder.2.2.relu2 | 0.0159864 | 0.204601 | 96.869% | 62.500% | 90.624% | 97.970% |
+| 41 | encoder.6 | 0.0807584 | 0.141029 | 53.777% | 10.156% | 7.352% | 15.625% |
+| 42 | encoder.norm0 | 0.0372942 | 0.0485543 | 0.000% | 0.000% | 4.494% | 17.488% |
+| 42 | encoder.1 | 0.0205682 | 0.0296874 | 45.871% | 0.000% | 7.286% | 25.603% |
+| 42 | encoder.2.0.norm1 | 0.1141 | 0.143285 | 0.000% | 0.000% | 6.238% | 20.565% |
+| 42 | encoder.2.0.relu1 | 0.0391902 | 0.0704554 | 60.230% | 0.000% | 9.806% | 30.266% |
+| 42 | encoder.2.0.norm2 | 0.063415 | 0.0609127 | 0.000% | 0.000% | 5.226% | 19.611% |
+| 42 | encoder.2.0.relu2 | 0.0104202 | 0.024973 | 72.332% | 0.000% | 12.730% | 40.738% |
+| 42 | encoder.2.1.norm1 | 0.107966 | 0.155758 | 0.000% | 0.000% | 9.566% | 30.041% |
+| 42 | encoder.2.1.relu1 | 0.0605604 | 0.109285 | 48.190% | 0.000% | 17.054% | 46.873% |
+| 42 | encoder.2.1.norm2 | 0.123296 | 0.0885077 | 0.000% | 0.000% | 8.979% | 24.453% |
+| 42 | encoder.2.1.relu2 | 0.00452987 | 0.0238068 | 93.398% | 18.750% | 52.875% | 92.077% |
+| 42 | encoder.2.2.norm1 | 0.0567213 | 0.11843 | 0.000% | 0.000% | 16.037% | 39.429% |
+| 42 | encoder.2.2.relu1 | 0.0137794 | 0.0774214 | 66.642% | 0.000% | 20.504% | 47.362% |
+| 42 | encoder.2.2.norm2 | 0.0633155 | 0.230366 | 0.000% | 0.000% | 28.530% | 68.004% |
+| 42 | encoder.2.2.relu2 | 0.0163001 | 0.208287 | 96.844% | 65.625% | 90.210% | 97.992% |
+| 42 | encoder.6 | 0.074841 | 0.13647 | 55.464% | 10.156% | 7.964% | 17.004% |
+| 43 | encoder.norm0 | 0.0364821 | 0.047663 | 0.000% | 0.000% | 4.597% | 17.568% |
+| 43 | encoder.1 | 0.0200898 | 0.029207 | 45.124% | 0.000% | 7.282% | 25.535% |
+| 43 | encoder.2.0.norm1 | 0.111628 | 0.140542 | 0.000% | 0.000% | 6.259% | 20.506% |
+| 43 | encoder.2.0.relu1 | 0.0383758 | 0.069055 | 60.001% | 0.000% | 9.344% | 30.409% |
+| 43 | encoder.2.0.norm2 | 0.0625399 | 0.060214 | 0.000% | 0.000% | 5.220% | 19.800% |
+| 43 | encoder.2.0.relu2 | 0.0102217 | 0.0247798 | 72.572% | 0.000% | 12.485% | 41.043% |
+| 43 | encoder.2.1.norm1 | 0.106005 | 0.153471 | 0.000% | 0.000% | 9.646% | 30.383% |
+| 43 | encoder.2.1.relu1 | 0.0597013 | 0.108513 | 48.264% | 0.000% | 17.127% | 47.212% |
+| 43 | encoder.2.1.norm2 | 0.122548 | 0.0883183 | 0.000% | 0.000% | 8.951% | 24.419% |
+| 43 | encoder.2.1.relu2 | 0.00459437 | 0.0243731 | 93.394% | 15.625% | 53.752% | 92.225% |
+| 43 | encoder.2.2.norm1 | 0.055612 | 0.11755 | 0.000% | 0.000% | 16.106% | 39.483% |
+| 43 | encoder.2.2.relu1 | 0.0135597 | 0.077549 | 66.507% | 0.000% | 20.182% | 46.690% |
+| 43 | encoder.2.2.norm2 | 0.0633387 | 0.233197 | 0.000% | 0.000% | 29.386% | 68.479% |
+| 43 | encoder.2.2.relu2 | 0.0164697 | 0.210263 | 96.818% | 65.625% | 90.173% | 98.047% |
+| 43 | encoder.6 | 0.0782257 | 0.139105 | 54.228% | 10.156% | 7.394% | 16.833% |
+| 44 | encoder.norm0 | 0.0363618 | 0.0474586 | 0.000% | 0.000% | 4.582% | 17.651% |
+| 44 | encoder.1 | 0.0199963 | 0.0291417 | 45.226% | 0.000% | 7.453% | 25.934% |
+| 44 | encoder.2.0.norm1 | 0.110386 | 0.138754 | 0.000% | 0.000% | 6.207% | 20.266% |
+| 44 | encoder.2.0.relu1 | 0.0380574 | 0.0682462 | 60.021% | 0.000% | 9.389% | 30.337% |
+| 44 | encoder.2.0.norm2 | 0.0620674 | 0.0597483 | 0.000% | 0.000% | 5.189% | 19.642% |
+| 44 | encoder.2.0.relu2 | 0.010258 | 0.0247587 | 72.223% | 0.000% | 12.631% | 41.246% |
+| 44 | encoder.2.1.norm1 | 0.10467 | 0.152707 | 0.000% | 0.000% | 9.873% | 30.692% |
+| 44 | encoder.2.1.relu1 | 0.0594772 | 0.109136 | 47.856% | 0.000% | 17.166% | 47.374% |
+| 44 | encoder.2.1.norm2 | 0.122152 | 0.0877919 | 0.000% | 0.000% | 8.865% | 24.355% |
+| 44 | encoder.2.1.relu2 | 0.00461913 | 0.0246308 | 93.391% | 21.875% | 53.854% | 91.998% |
+| 44 | encoder.2.2.norm1 | 0.0547993 | 0.117794 | 0.000% | 0.000% | 16.149% | 39.506% |
+| 44 | encoder.2.2.relu1 | 0.0133522 | 0.0785985 | 66.480% | 0.000% | 20.232% | 46.874% |
+| 44 | encoder.2.2.norm2 | 0.0640331 | 0.237125 | 0.000% | 0.000% | 29.495% | 68.627% |
+| 44 | encoder.2.2.relu2 | 0.0166966 | 0.213776 | 96.840% | 62.500% | 90.125% | 98.027% |
+| 44 | encoder.6 | 0.0807055 | 0.141883 | 53.360% | 10.156% | 7.583% | 16.696% |
+| 45 | encoder.norm0 | 0.0359052 | 0.0469691 | 0.000% | 0.000% | 4.585% | 17.713% |
+| 45 | encoder.1 | 0.0199911 | 0.0291326 | 45.032% | 0.000% | 7.349% | 25.889% |
+| 45 | encoder.2.0.norm1 | 0.109334 | 0.137738 | 0.000% | 0.000% | 6.231% | 20.400% |
+| 45 | encoder.2.0.relu1 | 0.0377055 | 0.0676967 | 59.982% | 0.000% | 9.541% | 30.341% |
+| 45 | encoder.2.0.norm2 | 0.0619016 | 0.0595626 | 0.000% | 0.000% | 5.275% | 19.611% |
+| 45 | encoder.2.0.relu2 | 0.0102952 | 0.0248522 | 72.296% | 0.000% | 12.926% | 41.234% |
+| 45 | encoder.2.1.norm1 | 0.103248 | 0.151082 | 0.000% | 0.000% | 10.022% | 30.814% |
+| 45 | encoder.2.1.relu1 | 0.0586649 | 0.108462 | 48.049% | 0.000% | 17.360% | 48.173% |
+| 45 | encoder.2.1.norm2 | 0.121567 | 0.0871905 | 0.000% | 0.000% | 8.868% | 24.403% |
+| 45 | encoder.2.1.relu2 | 0.00463882 | 0.0247291 | 93.376% | 21.875% | 54.106% | 92.216% |
+| 45 | encoder.2.2.norm1 | 0.0537108 | 0.113151 | 0.000% | 0.000% | 16.290% | 39.649% |
+| 45 | encoder.2.2.relu1 | 0.0130329 | 0.0734518 | 66.490% | 0.000% | 20.547% | 47.475% |
+| 45 | encoder.2.2.norm2 | 0.0641704 | 0.239496 | 0.000% | 0.000% | 29.799% | 69.155% |
+| 45 | encoder.2.2.relu2 | 0.0169591 | 0.21666 | 96.795% | 65.625% | 90.019% | 98.085% |
+| 45 | encoder.6 | 0.0766164 | 0.137889 | 54.570% | 10.156% | 7.639% | 17.337% |
+| 46 | encoder.norm0 | 0.035567 | 0.0465068 | 0.000% | 0.000% | 4.604% | 17.697% |
+| 46 | encoder.1 | 0.0197517 | 0.0288391 | 45.216% | 0.000% | 7.358% | 25.862% |
+| 46 | encoder.2.0.norm1 | 0.107676 | 0.13569 | 0.000% | 0.000% | 6.211% | 20.329% |
+| 46 | encoder.2.0.relu1 | 0.0373412 | 0.0669775 | 59.765% | 0.000% | 9.621% | 30.692% |
+| 46 | encoder.2.0.norm2 | 0.0613423 | 0.0592203 | 0.000% | 0.000% | 5.255% | 19.708% |
+| 46 | encoder.2.0.relu2 | 0.0102509 | 0.0247268 | 72.191% | 0.000% | 12.419% | 40.935% |
+| 46 | encoder.2.1.norm1 | 0.101661 | 0.149183 | 0.000% | 0.000% | 10.097% | 31.122% |
+| 46 | encoder.2.1.relu1 | 0.0582649 | 0.107708 | 47.731% | 0.000% | 17.415% | 47.927% |
+| 46 | encoder.2.1.norm2 | 0.121137 | 0.0867045 | 0.000% | 0.000% | 8.838% | 24.334% |
+| 46 | encoder.2.1.relu2 | 0.00466121 | 0.0249108 | 93.373% | 21.875% | 54.569% | 92.277% |
+| 46 | encoder.2.2.norm1 | 0.053286 | 0.113069 | 0.000% | 0.000% | 16.240% | 39.554% |
+| 46 | encoder.2.2.relu1 | 0.012995 | 0.073857 | 66.533% | 0.000% | 20.554% | 47.463% |
+| 46 | encoder.2.2.norm2 | 0.0644908 | 0.241123 | 0.000% | 0.000% | 29.830% | 69.397% |
+| 46 | encoder.2.2.relu2 | 0.017084 | 0.218172 | 96.757% | 62.500% | 89.857% | 98.094% |
+| 46 | encoder.6 | 0.0810252 | 0.142275 | 53.122% | 10.156% | 7.464% | 17.062% |
+| 47 | encoder.norm0 | 0.0353834 | 0.0462891 | 0.000% | 0.000% | 4.623% | 17.871% |
+| 47 | encoder.1 | 0.0196849 | 0.0287798 | 45.170% | 0.000% | 7.501% | 26.172% |
+| 47 | encoder.2.0.norm1 | 0.10691 | 0.134768 | 0.000% | 0.000% | 6.192% | 20.314% |
+| 47 | encoder.2.0.relu1 | 0.0371237 | 0.0665701 | 59.804% | 0.000% | 9.571% | 30.491% |
+| 47 | encoder.2.0.norm2 | 0.0611551 | 0.0592011 | 0.000% | 0.000% | 5.245% | 19.631% |
+| 47 | encoder.2.0.relu2 | 0.0101476 | 0.0245428 | 72.224% | 0.000% | 12.663% | 41.419% |
+| 47 | encoder.2.1.norm1 | 0.100231 | 0.147284 | 0.000% | 0.000% | 10.158% | 31.295% |
+| 47 | encoder.2.1.relu1 | 0.0576158 | 0.106635 | 47.789% | 0.000% | 17.578% | 48.070% |
+| 47 | encoder.2.1.norm2 | 0.12074 | 0.0860942 | 0.000% | 0.000% | 8.815% | 24.287% |
+| 47 | encoder.2.1.relu2 | 0.00466862 | 0.02498 | 93.373% | 25.000% | 54.808% | 92.384% |
+| 47 | encoder.2.2.norm1 | 0.0525026 | 0.111106 | 0.000% | 0.000% | 16.353% | 39.682% |
+| 47 | encoder.2.2.relu1 | 0.0128693 | 0.0721159 | 66.313% | 0.000% | 20.525% | 47.606% |
+| 47 | encoder.2.2.norm2 | 0.0645048 | 0.241284 | 0.000% | 0.000% | 30.093% | 69.534% |
+| 47 | encoder.2.2.relu2 | 0.0170866 | 0.218205 | 96.765% | 62.500% | 89.816% | 98.089% |
+| 47 | encoder.6 | 0.075466 | 0.136961 | 54.913% | 10.156% | 7.612% | 17.841% |
+| 48 | encoder.norm0 | 0.0351812 | 0.0461084 | 0.000% | 0.000% | 4.583% | 17.774% |
+| 48 | encoder.1 | 0.0195832 | 0.0287114 | 45.116% | 0.000% | 7.444% | 26.272% |
+| 48 | encoder.2.0.norm1 | 0.10631 | 0.13403 | 0.000% | 0.000% | 6.257% | 20.431% |
+| 48 | encoder.2.0.relu1 | 0.0368889 | 0.0660242 | 59.785% | 0.000% | 9.684% | 30.625% |
+| 48 | encoder.2.0.norm2 | 0.0606214 | 0.0585719 | 0.000% | 0.000% | 5.252% | 19.653% |
+| 48 | encoder.2.0.relu2 | 0.0102508 | 0.0247318 | 72.101% | 0.000% | 12.649% | 41.286% |
+| 48 | encoder.2.1.norm1 | 0.0998876 | 0.147046 | 0.000% | 0.000% | 10.262% | 31.273% |
+| 48 | encoder.2.1.relu1 | 0.0574587 | 0.106774 | 47.781% | 0.000% | 17.646% | 48.441% |
+| 48 | encoder.2.1.norm2 | 0.12028 | 0.0859312 | 0.000% | 0.000% | 8.812% | 24.300% |
+| 48 | encoder.2.1.relu2 | 0.00471465 | 0.0252365 | 93.349% | 21.875% | 54.951% | 92.357% |
+| 48 | encoder.2.2.norm1 | 0.0523167 | 0.110112 | 0.000% | 0.000% | 16.335% | 39.680% |
+| 48 | encoder.2.2.relu1 | 0.0127452 | 0.0709364 | 66.405% | 0.000% | 20.630% | 47.800% |
+| 48 | encoder.2.2.norm2 | 0.0648246 | 0.242853 | 0.000% | 0.000% | 30.131% | 69.595% |
+| 48 | encoder.2.2.relu2 | 0.0172392 | 0.220092 | 96.771% | 65.625% | 89.841% | 98.101% |
+| 48 | encoder.6 | 0.0754558 | 0.137486 | 54.842% | 10.156% | 7.799% | 18.071% |
+| 49 | encoder.norm0 | 0.034951 | 0.0457032 | 0.000% | 0.000% | 4.646% | 17.934% |
+| 49 | encoder.1 | 0.0195109 | 0.0284799 | 44.855% | 0.000% | 7.568% | 26.455% |
+| 49 | encoder.2.0.norm1 | 0.105503 | 0.133005 | 0.000% | 0.000% | 6.237% | 20.415% |
+| 49 | encoder.2.0.relu1 | 0.0366297 | 0.0656306 | 59.752% | 0.000% | 9.591% | 30.638% |
+| 49 | encoder.2.0.norm2 | 0.0607613 | 0.0588456 | 0.000% | 0.000% | 5.262% | 19.729% |
+| 49 | encoder.2.0.relu2 | 0.0101833 | 0.02461 | 72.114% | 0.000% | 12.803% | 41.683% |
+| 49 | encoder.2.1.norm1 | 0.0993497 | 0.146624 | 0.000% | 0.000% | 10.340% | 31.440% |
+| 49 | encoder.2.1.relu1 | 0.05729 | 0.106779 | 47.701% | 0.000% | 17.660% | 48.338% |
+| 49 | encoder.2.1.norm2 | 0.120689 | 0.0861916 | 0.000% | 0.000% | 8.780% | 24.225% |
+| 49 | encoder.2.1.relu2 | 0.00472318 | 0.0254214 | 93.371% | 21.875% | 55.053% | 92.370% |
+| 49 | encoder.2.2.norm1 | 0.0522099 | 0.112238 | 0.000% | 0.000% | 16.245% | 39.578% |
+| 49 | encoder.2.2.relu1 | 0.0128253 | 0.0740417 | 66.279% | 0.000% | 20.342% | 47.378% |
+| 49 | encoder.2.2.norm2 | 0.0653004 | 0.244747 | 0.000% | 0.000% | 30.168% | 69.502% |
+| 49 | encoder.2.2.relu2 | 0.0173151 | 0.221203 | 96.749% | 65.625% | 89.674% | 98.110% |
+| 49 | encoder.6 | 0.0768158 | 0.139236 | 54.489% | 10.156% | 7.784% | 18.006% |
+| 50 | encoder.norm0 | 0.034892 | 0.0457418 | 0.000% | 0.000% | 4.644% | 17.938% |
+| 50 | encoder.1 | 0.0194836 | 0.0286039 | 45.055% | 0.000% | 7.516% | 26.456% |
+| 50 | encoder.2.0.norm1 | 0.105357 | 0.132929 | 0.000% | 0.000% | 6.229% | 20.402% |
+| 50 | encoder.2.0.relu1 | 0.0366919 | 0.0656104 | 59.657% | 0.000% | 9.718% | 30.617% |
+| 50 | encoder.2.0.norm2 | 0.0604404 | 0.0584928 | 0.000% | 0.000% | 5.251% | 19.666% |
+| 50 | encoder.2.0.relu2 | 0.0102071 | 0.0246912 | 72.107% | 0.000% | 12.808% | 41.821% |
+| 50 | encoder.2.1.norm1 | 0.0991256 | 0.146578 | 0.000% | 0.000% | 10.471% | 31.524% |
+| 50 | encoder.2.1.relu1 | 0.0572634 | 0.107099 | 47.685% | 0.000% | 17.682% | 48.609% |
+| 50 | encoder.2.1.norm2 | 0.12031 | 0.085818 | 0.000% | 0.000% | 8.798% | 24.209% |
+| 50 | encoder.2.1.relu2 | 0.00473145 | 0.0253001 | 93.367% | 25.000% | 55.005% | 92.447% |
+| 50 | encoder.2.2.norm1 | 0.0518674 | 0.108228 | 0.000% | 0.000% | 16.357% | 39.693% |
+| 50 | encoder.2.2.relu1 | 0.0126279 | 0.0687148 | 66.267% | 0.000% | 20.637% | 47.898% |
+| 50 | encoder.2.2.norm2 | 0.065108 | 0.244729 | 0.000% | 0.000% | 30.262% | 69.822% |
+| 50 | encoder.2.2.relu2 | 0.0173836 | 0.222002 | 96.713% | 65.625% | 89.678% | 98.102% |
+| 50 | encoder.6 | 0.0758618 | 0.138187 | 54.597% | 10.156% | 7.767% | 18.174% |
+
+##### Layer gradient statistics — final recorded checkpoint
+
+| Layer | Pre mean | Pre median | Pre p95 | Pre max | Post mean | Post max | Steps | Nonfinite |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| encoder.0 | 3.51269 | 2.94764 | 4.58187 | 15025.8 | 0.350639 | 1.348 | 41,805 | 0 |
+| encoder.norm0 | 12.0589 | 9.97131 | 17.8437 | 48676.1 | 1.15842 | 4.05863 | 41,805 | 0 |
+| encoder.2.0.conv1 | 1.94876 | 1.60469 | 2.18109 | 11249.9 | 0.191644 | 0.80944 | 41,805 | 0 |
+| encoder.2.0.norm1 | 2.62039 | 2.13941 | 3.1866 | 15507.7 | 0.253138 | 1.17967 | 41,805 | 0 |
+| encoder.2.0.conv2 | 1.65616 | 1.39464 | 1.9767 | 7745.37 | 0.165668 | 0.801236 | 41,805 | 0 |
+| encoder.2.0.norm2 | 8.6497 | 7.41121 | 12.6061 | 27166.3 | 0.859513 | 2.83398 | 41,805 | 0 |
+| encoder.2.1.conv1 | 1.81685 | 1.58512 | 2.36644 | 5613.6 | 0.187133 | 0.65069 | 41,805 | 0 |
+| encoder.2.1.norm1 | 3.12475 | 2.68838 | 4.69979 | 8706.48 | 0.313889 | 1.11207 | 41,805 | 0 |
+| encoder.2.1.conv2 | 3.08794 | 2.66088 | 4.74018 | 6893.61 | 0.311014 | 1.30424 | 41,805 | 0 |
+| encoder.2.1.norm2 | 32.2644 | 26.3866 | 73.0007 | 21981.6 | 2.7831 | 4.0283 | 41,805 | 0 |
+| encoder.2.2.conv1 | 12.5081 | 10.9855 | 23.5511 | 6325.25 | 1.24753 | 4.01626 | 41,805 | 0 |
+| encoder.2.2.norm1 | 22.8146 | 18.9119 | 49.1699 | 7163.7 | 2.07276 | 3.27666 | 41,805 | 0 |
+| encoder.2.2.conv2 | 11.3802 | 10.5292 | 18.593 | 1050.27 | 1.2051 | 3.15746 | 41,805 | 0 |
+| encoder.2.2.norm2 | 24.8414 | 20.2657 | 54.7866 | 20031.3 | 2.19073 | 3.39648 | 41,805 | 0 |
+| encoder.5 | 9.52816 | 9.41081 | 11.3183 | 278.073 | 1.11884 | 2.74721 | 41,805 | 0 |
+| policy | 0.173791 | 0.173509 | 0.1854 | 3.48412 | 0.0207021 | 0.0513693 | 41,805 | 0 |
+| value | — | — | — | — | — | — | — | — |
+
+##### Activation statistics — final recorded checkpoint
+
+Exact reductions on the recorded diagnostic observations, not full validation. Top-1/top-4 shares use per-channel mean absolute activation. They measure activity, not causal importance.
+
+| Layer | Type | Channels | Mean | Std | Negative | Zero | Dormant | Top-1 share | Top-4 share |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| encoder.0 | Conv2d | 32 | -0.266136 | 0.503906 | 66.559% | 0.000% | 0.000% | 13.308% | 44.914% |
+| encoder.norm0 | BatchNorm2d | 32 | 0.00407531 | 0.0457418 | 45.055% | 0.000% | 0.000% | 4.644% | 17.938% |
+| encoder.1 | ReLU | 32 | 0.0194836 | 0.0286039 | 0.000% | 45.055% | 0.000% | 7.516% | 26.456% |
+| encoder.2.0.conv1 | Conv2d | 32 | -0.00774291 | 0.101765 | 50.620% | 0.000% | 0.000% | 9.262% | 28.979% |
+| encoder.2.0.norm1 | BatchNorm2d | 32 | -0.0319733 | 0.132929 | 59.657% | 0.000% | 0.000% | 6.229% | 20.402% |
+| encoder.2.0.relu1 | ReLU | 32 | 0.0366919 | 0.0656104 | 0.000% | 59.657% | 0.000% | 9.718% | 30.617% |
+| encoder.2.0.conv2 | Conv2d | 32 | -0.0257666 | 0.161528 | 54.515% | 0.000% | 0.000% | 7.319% | 21.360% |
+| encoder.2.0.norm2 | BatchNorm2d | 32 | -0.0513354 | 0.0584928 | 82.090% | 0.000% | 0.000% | 5.251% | 19.666% |
+| encoder.2.0.relu2 | ReLU | 32 | 0.0102071 | 0.0246912 | 0.000% | 72.107% | 0.000% | 12.808% | 41.821% |
+| encoder.2.1.conv1 | Conv2d | 32 | 0.0145116 | 0.101045 | 47.728% | 0.000% | 0.000% | 8.997% | 29.015% |
+| encoder.2.1.norm1 | BatchNorm2d | 32 | 0.0154011 | 0.146578 | 47.685% | 0.000% | 0.000% | 10.471% | 31.524% |
+| encoder.2.1.relu1 | ReLU | 32 | 0.0572634 | 0.107099 | 0.000% | 47.685% | 0.000% | 17.682% | 48.609% |
+| encoder.2.1.conv2 | Conv2d | 32 | -0.0387879 | 0.268236 | 62.204% | 0.000% | 0.000% | 8.161% | 28.446% |
+| encoder.2.1.norm2 | BatchNorm2d | 32 | -0.113835 | 0.085818 | 94.102% | 0.000% | 0.000% | 8.798% | 24.209% |
+| encoder.2.1.relu2 | ReLU | 32 | 0.00473145 | 0.0253001 | 0.000% | 93.367% | 25.000% | 55.005% | 92.447% |
+| encoder.2.2.conv1 | Conv2d | 32 | 0.0155785 | 0.148818 | 50.635% | 0.000% | 0.000% | 12.650% | 33.822% |
+| encoder.2.2.norm1 | BatchNorm2d | 32 | -0.0266116 | 0.108228 | 66.267% | 0.000% | 0.000% | 16.357% | 39.693% |
+| encoder.2.2.relu1 | ReLU | 32 | 0.0126279 | 0.0687148 | 0.000% | 66.267% | 0.000% | 20.637% | 47.898% |
+| encoder.2.2.conv2 | Conv2d | 32 | 0.135455 | 0.294113 | 14.811% | 0.000% | 0.000% | 9.761% | 31.687% |
+| encoder.2.2.norm2 | BatchNorm2d | 32 | -0.0345048 | 0.244729 | 98.492% | 0.000% | 0.000% | 30.262% | 69.822% |
+| encoder.2.2.relu2 | ReLU | 32 | 0.0173836 | 0.222002 | 0.000% | 96.713% | 65.625% | 89.678% | 98.102% |
+| encoder.3 | Identity | 32 | 0.0173836 | 0.222002 | 0.000% | 96.713% | 65.625% | 89.678% | 98.102% |
+| encoder.4 | Flatten | 2,048 | 0.0173836 | 0.222002 | 0.000% | 96.713% | 75.635% | — | — |
+| encoder.5 | Linear | 128 | -0.0106273 | 0.248843 | 54.597% | 0.000% | 10.156% | 4.026% | 13.568% |
+| encoder.6 | ReLU | 128 | 0.0758618 | 0.138187 | 0.000% | 54.597% | 10.156% | 7.767% | 18.174% |
+| encoder.dropout | Dropout | 128 | 0.0758618 | 0.138187 | 0.000% | 54.597% | 10.156% | 7.767% | 18.174% |
+| policy | Linear | 4,096 | -47.9775 | 8.54626 | 100.000% | 0.000% | 0.000% | — | — |
+| value | Linear | 1 | 0.101623 | 0.058029 | 3.125% | 0.000% | 0.000% | 100.000% | 100.000% |
+
+##### Actual sampled optimizer updates — final recorded checkpoint
+
+Sampling interval: 100 steps. Ratios are dimensionless L2(update)/L2(parameters), not LR times gradient.
+
+| Layer | Relative mean | Relative median | Relative p95 | Relative max | Update L2 mean | Parameter L2 mean |
+| --- | --- | --- | --- | --- | --- | --- |
+| encoder.0 | 1.4605e-05 | 1.46036e-05 | 1.74466e-05 | 1.95434e-05 | 0.000146983 | 10.0636 |
+| encoder.norm0 | 7.2105e-05 | 7.1995e-05 | 9.18267e-05 | 0.000110879 | 1.84373e-05 | 0.255693 |
+| encoder.2.0.conv1 | 2.34122e-05 | 2.33888e-05 | 2.83519e-05 | 3.06709e-05 | 0.000223492 | 9.54561 |
+| encoder.2.0.norm1 | 2.44413e-05 | 2.41769e-05 | 3.12769e-05 | 3.64078e-05 | 1.87313e-05 | 0.766349 |
+| encoder.2.0.conv2 | 2.09352e-05 | 2.09707e-05 | 2.53372e-05 | 2.71798e-05 | 0.000222871 | 10.6454 |
+| encoder.2.0.norm2 | 4.22772e-05 | 4.16474e-05 | 5.45382e-05 | 6.48366e-05 | 1.83564e-05 | 0.434177 |
+| encoder.2.1.conv1 | 2.10591e-05 | 2.10311e-05 | 2.54684e-05 | 2.83319e-05 | 0.000222675 | 10.5735 |
+| encoder.2.1.norm1 | 2.23602e-05 | 2.2246e-05 | 2.86947e-05 | 3.2011e-05 | 1.84027e-05 | 0.822995 |
+| encoder.2.1.conv2 | 1.37547e-05 | 1.36935e-05 | 1.65855e-05 | 1.84139e-05 | 0.000218702 | 15.8999 |
+| encoder.2.1.norm2 | 2.25796e-05 | 2.20199e-05 | 3.07004e-05 | 3.68478e-05 | 1.81645e-05 | 0.804454 |
+| encoder.2.2.conv1 | 7.66864e-06 | 7.64287e-06 | 9.1048e-06 | 1.01583e-05 | 0.000213556 | 27.8478 |
+| encoder.2.2.norm1 | 2.84018e-05 | 2.77091e-05 | 4.23843e-05 | 5.58486e-05 | 1.76632e-05 | 0.621895 |
+| encoder.2.2.conv2 | 7.75504e-06 | 7.6674e-06 | 9.50558e-06 | 1.03642e-05 | 0.000218032 | 28.1147 |
+| encoder.2.2.norm2 | 1.3283e-05 | 1.30002e-05 | 1.80673e-05 | 2.15644e-05 | 1.83386e-05 | 1.38064 |
+| encoder.5 | 1.54824e-06 | 1.55455e-06 | 1.79254e-06 | 1.96605e-06 | 0.000811194 | 523.945 |
+| policy | 2.66633e-07 | 2.65794e-07 | 3.06365e-07 | 5.59965e-07 | 0.000898292 | 3369.01 |
+| value | — | — | — | — | — | — |
+
+#### histograms.json: recorded histogram summaries
+
+State: `final_epoch`; epoch: `50`; observations: `512`. Histogram reservoir moments describe sampled values; a bin near zero is not an exact zero count.
+
+```json
+{
+  "activation_sample": {
+    "source": "first nonpadding validation observations",
+    "max_observations": 512,
+    "max_values_per_layer": 50000,
+    "histogram_method": "uniform random priority reservoir",
+    "seed": 7980,
+    "statistics": "all values in selected observations"
+  }
+}
+```
+
+| Kind | Layer | Sample n | Mean | Std | Min | Max | Nonfinite |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| weights | encoder.0 | 4,032 | -0.0448146 | 0.15158 | -0.925367 | 0.571076 | 0 |
+| weights | encoder.norm0 | 32 | 0.0397579 | 0.0102522 | 0.0218347 | 0.0575245 | 0 |
+| weights | encoder.2.0.conv1 | 9,216 | -0.00260536 | 0.0990581 | -1.13051 | 0.478408 | 0 |
+| weights | encoder.2.0.norm1 | 32 | 0.108898 | 0.0283208 | 0.0735585 | 0.179404 | 0 |
+| weights | encoder.2.0.conv2 | 9,216 | -0.00570897 | 0.110467 | -0.992853 | 0.544797 | 0 |
+| weights | encoder.2.0.norm2 | 32 | 0.0451557 | 0.0187987 | 0.014711 | 0.111444 | 0 |
+| weights | encoder.2.1.conv1 | 9,216 | -0.00289841 | 0.109757 | -0.740285 | 0.676293 | 0 |
+| weights | encoder.2.1.norm1 | 32 | 0.0957085 | 0.058404 | 0.0450166 | 0.339609 | 0 |
+| weights | encoder.2.1.conv2 | 9,216 | 0.0032465 | 0.165356 | -1.29349 | 1.4553 | 0 |
+| weights | encoder.2.1.norm2 | 32 | 0.0503189 | 0.0153062 | 0.0305114 | 0.0939586 | 0 |
+| weights | encoder.2.2.conv1 | 9,216 | -0.105754 | 0.26986 | -2.00704 | 0.921552 | 0 |
+| weights | encoder.2.2.norm1 | 32 | 0.0645013 | 0.0650411 | 0.0102963 | 0.321166 | 0 |
+| weights | encoder.2.2.conv2 | 9,216 | 0.0751441 | 0.28288 | -1.28334 | 2.00177 | 0 |
+| weights | encoder.2.2.norm2 | 32 | 0.0800163 | 0.194531 | 0.0116529 | 1.08949 | 0 |
+| weights | encoder.5 | 262,144 | 0.670901 | 0.772522 | -3.87146 | 5.56366 | 0 |
+| weights | policy | 524,288 | -3.31852 | 3.04558 | -41.4126 | 1.04178 | 0 |
+| weights | value | 128 | 0.00149489 | 0.0473167 | -0.0877847 | 0.0878781 | 0 |
+| activations | encoder.0 | 50,000 | -0.263627 | 0.502033 | -2.39833 | 0.90301 | 0 |
+| activations | encoder.norm0 | 50,000 | 0.00381457 | 0.0457239 | -0.312152 | 0.245526 | 0 |
+| activations | encoder.1 | 50,000 | 0.0196403 | 0.028723 | 0 | 0.245389 | 0 |
+| activations | encoder.2.0.conv1 | 50,000 | -0.00786665 | 0.101929 | -0.460464 | 0.299753 | 0 |
+| activations | encoder.2.0.norm1 | 50,000 | -0.0314491 | 0.132586 | -0.68574 | 0.588874 | 0 |
+| activations | encoder.2.0.relu1 | 50,000 | 0.0368098 | 0.0657136 | 0 | 0.616292 | 0 |
+| activations | encoder.2.0.conv2 | 50,000 | -0.026669 | 0.162853 | -1.31071 | 0.671821 | 0 |
+| activations | encoder.2.0.norm2 | 50,000 | -0.0509022 | 0.0581938 | -0.448964 | 0.198544 | 0 |
+| activations | encoder.2.0.relu2 | 50,000 | 0.0100332 | 0.0244407 | 0 | 0.226707 | 0 |
+| activations | encoder.2.1.conv1 | 50,000 | 0.0147003 | 0.101467 | -0.500355 | 0.407366 | 0 |
+| activations | encoder.2.1.norm1 | 50,000 | 0.0160521 | 0.146582 | -0.732054 | 1.93957 | 0 |
+| activations | encoder.2.1.relu1 | 50,000 | 0.0563213 | 0.105042 | 0 | 1.71502 | 0 |
+| activations | encoder.2.1.conv2 | 50,000 | -0.0381863 | 0.267808 | -1.85436 | 1.90678 | 0 |
+| activations | encoder.2.1.norm2 | 50,000 | -0.113785 | 0.0852208 | -1.13188 | 0.67203 | 0 |
+| activations | encoder.2.1.relu2 | 50,000 | 0.0049359 | 0.0269855 | 0 | 1.48028 | 0 |
+| activations | encoder.2.2.conv1 | 50,000 | 0.0167351 | 0.148111 | -0.437645 | 1.05553 | 0 |
+| activations | encoder.2.2.norm1 | 50,000 | -0.0268919 | 0.0958842 | -1.65416 | 4.04146 | 0 |
+| activations | encoder.2.2.relu1 | 50,000 | 0.0130231 | 0.0756704 | 0 | 9.47589 | 0 |
+| activations | encoder.2.2.conv2 | 50,000 | 0.133676 | 0.309137 | -7.43163 | 1.13318 | 0 |
+| activations | encoder.2.2.norm2 | 50,000 | -0.0322516 | 0.259224 | -2.209 | 7.11013 | 0 |
+| activations | encoder.2.2.relu2 | 50,000 | 0.0163413 | 0.216945 | 0 | 7.0326 | 0 |
+| activations | encoder.3 | 50,000 | 0.0164023 | 0.209939 | 0 | 5.65482 | 0 |
+| activations | encoder.4 | 50,000 | 0.0161182 | 0.214392 | 0 | 4.96064 | 0 |
+| activations | encoder.5 | 50,000 | -0.0108772 | 0.249125 | -2.56523 | 2.31995 | 0 |
+| activations | encoder.6 | 50,000 | 0.0760227 | 0.138379 | 0 | 2.31995 | 0 |
+| activations | encoder.dropout | 50,000 | 0.0762374 | 0.139224 | 0 | 2.31995 | 0 |
+| activations | policy | 50,000 | -47.9118 | 8.50256 | -94.2678 | -14.5404 | 0 |
+| activations | value | 512 | 0.101623 | 0.058029 | -0.0588574 | 0.288827 | 0 |
+
+Saved checkpoint files: `best_policy.pt`, `final_policy.pt`, `last_policy.pt`.
+
+### Updated coverage audit
+
+All42 locally saved training metrics records are now represented in this SSOT (41 original records plus this medium run). Seven saved arena series remain; no new medium-model arena series was run. Earlier pending statements describe the pre-download state and are superseded by this completed section.
+
+
+<a id="stage-29"></a>
+
+## 29. Medium residual versus full CNN: 100 arena games (2026-11-04)
+
+The medium-model playing-strength comparison proposed in stage28 has now been run. This does not extend training or change either model. Evidence: `/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/arena-medium-residual-vs-full-cnn-100 games/summary.json`, `configuration.json`, `analysis-summary.json`, per-batch evaluator logs/summaries, and all100 game replays.
+
+### Models and protocol
+
+- A: medium residual32/128, three residual blocks,850,785parameters; run27890681 **best_policy.pt, epoch49**, selected by fixed8,192-position legal accuracy. Source: `/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/best_policy.pt`. Checkpoint SHA256: `203d399c41d13259d6b2d2e78fe34072aa555e7674114521d7ef111d92a8fedd`.
+- B: full plainCNN64/256 with convolutionalBN,2,147,073parameters; run27800942 **best_policy.pt, epoch8**, selected by raw validationNLL. Source: `/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/full-data-plain-cnn-adamw-bn-8epochs-job27800942/best_policy.pt`. Checkpoint SHA256: `7ba9870bb4151241c50c7d288e892725806f9fab6e7f3844aaa445b812d4656c`. This hash exactly matches the full CNN opponent in the earlier small-residual32–68 series.
+- Existing evaluate.py and shared bot inference; eval mode, visible-observation move filtering, legal-action sampling at **temperature 0.9**, queen promotions, fresh process randomness. No search or new model tuning.
+- **100 games,50 per color**, clocks180+2, maximum 1,000 plies. Two independent parallel50-game evaluator batches, each25 games per color; aggregate results are not a single seeded paired-opening experiment. Frozen bot bundles preserve the original source checkpoints. No initialization/time/protocol bot failures.
+
+### Results, from the medium residual's perspective
+
+| Color | Wins | Losses | Draws | Score |
+| --- | --- | --- | --- | --- |
+| White |30|19|1|61.0%|
+| Black |24|26|0|48.0%|
+| **Total** |**54**|**45**|**1**|**54.5%**|
+
+Winrate is54%; score with draw=0.5 is54.5%. Reasons:99 King capturable,1 threefold repetition. Both bots had0 failures. Mean game length **68.12plies**, min6,max150. Total parallel wall time **550.51seconds (9.18minutes)**; parallel timing is not directly comparable with a serial evaluation's per-game wall time.
+
+Among99 decisive games, medium wins54: **54.55%**, approximate95%Wilson interval **44.75%–64.00%** assuming independent games. The interval includes50%; the observed narrow lead does **not** establish statistically convincing superiority. This interval is for decisive-game win probability, not a confidence interval for the draw-adjusted score. There is no held-out opponent population, Elo estimate, multiple-seed model comparison, or opening suite here.
+
+### Interpretation
+
+1. **The medium residual is competitive with this full CNN checkpoint.** It has a small observed lead,54.5% score, at~60%fewer parameters. We cannot call it definitively stronger based on100 games.
+2. **It closes the gap observed for the small residual.** The prior small-residual series scored32%, versus54.5%here against the identical opponent checkpoint. The two series use fresh random games, and the models differ in width/initialization. This supports the practical benefit of the medium recipe; it is not an isolated multi-seed causal estimate of capacity.
+3. **Predictive accuracy and playing strength now both suggest near parity, rather than a clear residual victory.** The medium has slightly higher raw imitation accuracy, worse raw NLL and much more training exposure than the plainCNN. A near-even arena result is compatible with these mixed prediction metrics.
+4. **Competitive performance does not negate the optimization diagnostics.** All-update clipping and late-trunk concentration remain observed in the saved training run; these games do not prove that those issues are harmless or causally limit strength. They also show that the concerning internal statistics did not prevent the model from playing competitively.
+5. This result alone does not justify another size increase or further training. More games could resolve a small strength difference; targeted training changes remain separate hypotheses. No continuation training was performed.
+
+The SSOT now includes this additional100-game comparison, retaining both50-game raw batch summaries and the combined summary. Earlier statements that medium playing strength was unmeasured describe the pre-evaluation state and are superseded by this section.
+
+
+
+## RL history moved to its dedicated report
+
+The complete chronological RL history and numerical evidence are now maintained in [RL_EXPERIMENT_HISTORY.md](RL_EXPERIMENT_HISTORY.md). This split preserves stage numbering and avoids maintaining duplicate findings.
+
+<a id="stage-30"></a>
+
+Stage30: [Readiness to move from imitation baselines to PPO (2026-11-04)](RL_EXPERIMENT_HISTORY.md#stage-30).
+
+<a id="stage-31"></a>
+
+Stage31: [PPO infrastructure implementation and CPU pipeline validation (2026-11-04)](RL_EXPERIMENT_HISTORY.md#stage-31).
+
+<a id="stage-32"></a>
+
+Stage32: [PPO draw bonus and expanded learning diagnostics](RL_EXPERIMENT_HISTORY.md#stage-32).
+
+<a id="stage-33"></a>
+
+Stage33: [One persistent RL checkpoint per model variant](RL_EXPERIMENT_HISTORY.md#stage-33).
+
+<a id="stage-34"></a>
+
+Stage34: [Training both CNN variants: current capability and literature](RL_EXPERIMENT_HISTORY.md#stage-34).
+
+<a id="stage-35"></a>
+
+Stage35: [Minimal paired PPO: both CNNs learn from the same games](RL_EXPERIMENT_HISTORY.md#stage-35).
+
+<a id="stage-36"></a>
+
+Stage36: [Full CNN and medium residual: 400 paired PPO updates](RL_EXPERIMENT_HISTORY.md#stage-36).
+
+<a id="stage-37"></a>
+
+Stage37: [Assessing value pretraining on historical games](RL_EXPERIMENT_HISTORY.md#stage-37).
+
+<a id="stage-38"></a>
+
+Stage38: [Historical value-head warmup, then PPO updates401–800](RL_EXPERIMENT_HISTORY.md#stage-38).
+
+<a id="stage-39"></a>
+
+Stage39: [Completed historical value warmup and paired PPO through update800](RL_EXPERIMENT_HISTORY.md#stage-39).
+
+<a id="stage-40"></a>
+
+Stage40: [Literature review and proposed critic experiments (2026-11-05; not run)](RL_EXPERIMENT_HISTORY.md#stage-40).
+
+<a id="stage-41"></a>
+
+Stage41: [Frozen update800 fresh-game critic diagnostic (2026-11-05; completed)](RL_EXPERIMENT_HISTORY.md#stage-41).
+
+<a id="stage-42"></a>
+
+Stage42: [Paired PPO continuation with lambda1, updates801–1200 (2026-11-05; launched)](RL_EXPERIMENT_HISTORY.md#stage-42).
+
+<a id="stage-43"></a>
+
+Stage43: [Paired PPO lambda1 continuation through1200 (2026-11-05; completed)](RL_EXPERIMENT_HISTORY.md#stage-43).
+
+<a id="stage-44"></a>
+
+Stage44: [Current checkpoint round robin at update1200 (2026-11-05)](RL_EXPERIMENT_HISTORY.md#stage-44).
+

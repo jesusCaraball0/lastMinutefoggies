@@ -1,6 +1,6 @@
 # Fog-of-War Chess: RL Experiment History
 
-Updated **2026-11-05 (America/New_York)**. This is the **single source of truth for RL experiments, evaluation results, and takeaways**. The companion [supervised experiment report](EXPERIMENT_HISTORY.md) covers imitation training and the baseline models. This report preserves the original chronological stage numbers30–44 so existing references remain meaningful. Historical proposals and launch statuses are retained; later completed results supersede them.
+Updated **2026-11-06 (America/New_York)**. This is the **single source of truth for RL experiments, evaluation results, and takeaways**. The companion [supervised experiment report](EXPERIMENT_HISTORY.md) covers imitation training and the baseline models. This report preserves the original chronological stage numbers30–60 so existing references remain meaningful. Supervised stages49–50 and55–57 link to their complete records in the companion model experiment report. Historical proposals and launch statuses are retained; later completed results supersede them.
 
 Raw JSON, checkpoints, and replays remain the numerical evidence. Tables summarize measured results; links identify complete metric traces and artifacts. No historical weights or measurements have been reconstructed. The three400-update phases are successive portions of the same paired training trajectory, not independent training replicates.
 
@@ -44,6 +44,22 @@ Training reward uses a different convention: **win+1, loss−1, draw+0.1**. Mean
 
 Benchmark percentages across400/800/1200 above use the same572940 evaluation seed and frozen opponents; the stage44 tournament uses five different seeds. They are distinct evaluations. In-loop best selection uses yet another protocol and must not be conflated with either.
 
+## Latest continuation through2200
+
+The1000-update continuation completed: latest repeated benchmark82.5% fullCNN and58.5% residual, versus80%/78% at1200. FullCNN's2.5-point change is unresolved on100 games; residual's19.5-point benchmark decline is reinforced by a five-seed direct loss to its saved-best (36W61L3D). Full latest beat its saved-best58W37L5D. Critics improved modestly but remain weak. See [stage45](#stage-45) for complete metrics and revised next steps. Earlier current summaries and stage44 rankings describe their original checkpoints.
+
+- [49. Boosted CNN server pretraining setup](EXPERIMENT_HISTORY.md#stage-49)
+- [50. Completed boosted CNN pretraining and PPO readiness](EXPERIMENT_HISTORY.md#stage-50)
+- [51. Balanced boosted PPO launch](#stage-51)
+- [52. Completed boosted PPO400 results](#stage-52)
+- [53. Fresh-game boosted value-head-only launch](#stage-53)
+- [54. Completed value-head-only400 results](#stage-54)
+- [55. Boosted outcome CNN joint-pretraining setup](EXPERIMENT_HISTORY.md#stage-55)
+- [56. Wide boosted outcome CNN setup](EXPERIMENT_HISTORY.md#stage-56)
+- [57. Revised wide baseline:64/256](EXPERIMENT_HISTORY.md#stage-57)
+
+- [59. Outcome-pretrained boosted PPO400 launch](#stage-59)
+
 ## Chronological findings
 
 - [30. Readiness to move from imitation baselines to PPO (2026-11-04)](#stage-30)
@@ -61,6 +77,9 @@ Benchmark percentages across400/800/1200 above use the same572940 evaluation see
 - [42. Paired PPO continuation with lambda1, updates801–1200 (2026-11-05; launched)](#stage-42)
 - [43. Paired PPO lambda1 continuation through1200 (2026-11-05; completed)](#stage-43)
 - [44. Current checkpoint round robin at update1200 (2026-11-05)](#stage-44)
+- [45. Paired PPO through2200 and incumbent comparison](#stage-45)
+- [46. Literature: robust fog play and PSRO proposal](#stage-46)
+- [47. History-enriched imitation and frozen-opponent PPO pilot](#stage-47)
 
 <a id="stage-30"></a>
 
@@ -1898,3 +1917,1097 @@ Includes roster paths and actor hashes, duplicate aliases, W/L/D, colors, termin
 - [RL operation and checkpoint usage](rl/README.md). This is operational documentation, not a parallel findings report.
 
 Full per-update JSON is linked rather than duplicating1200 large records per model in Markdown. Historical smoke-run results, implementation checks, literature links and source-model provenance remain in the chronological stages above.
+
+<a id="stage-45"></a>
+
+## 45. Paired PPO continuation1201–2200 (2026-11-05; completed)
+
+User ran the provided resume command, retaining lambda1 and the existing recipe. Both models completed1000 additional updates,16000 unique shared training games,35200 cumulative unique training games. No architecture, LR, optimizer, draw reward, opponent policy or warmup change was introduced. This is a continuation of the same trajectory, not an independent seed.
+
+### Repeated frozen-baseline benchmark
+
+Post-completion evaluation: seed572940,50 games against each original supervised baseline,100 per candidate, temperature0.9, max256 plies. Same protocol as the400/800/1200 benchmark; these are repeated known opponents/seed. Score counts draws0.5. The table is not the stage44 all-opponent round-robin aggregate.
+
+| Candidate | Selected update | W/L/D | Score at2200 | Corresponding score at1200 | Nominal score SE |
+| --- | --- | --- | --- | --- | --- |
+| full_cnn_ppo_latest | 2200 | 82/17/1 | 82.5% | 80.0% | 0.0379 |
+| full_cnn_ppo_best | 1170 | 67/32/1 | 67.5% | 67.5% | 0.0468 |
+| residual_ppo_latest | 2200 | 58/41/1 | 58.5% | 78.0% | 0.0493 |
+| residual_ppo_best | 1200 | 78/22/0 | 78.0% | 78.0% | 0.0416 |
+
+### Fresh training-rollout windows
+
+Pre-update MC RMSE pools squared error by decision count; EV averages per-update EV. Each50-update window contains800 shared games. Policies, opponents and return distributions evolve, so these are not fixed validation-set errors.
+
+| Model | Window | W/L/D | Score | Mean reward | MC RMSE | MC EV |
+| --- | --- | --- | --- | --- | --- | --- |
+| cnn-c64-h256-8ebd1cf653 | pre_change_last50 | 423/365/12 | 53.6250% | 0.074000 | 0.837583 | 0.025297 |
+| cnn-c64-h256-8ebd1cf653 | phase2_first50 | 386/385/29 | 50.0625% | 0.004875 | 0.824027 | 0.025915 |
+| cnn-c64-h256-8ebd1cf653 | last50 | 481/289/30 | 62.0000% | 0.243750 | 0.808479 | 0.038663 |
+| cnn-c64-h256-8ebd1cf653 | phase2 | 8687/6903/410 | 55.5750% | 0.114062 | 0.830589 | 0.027719 |
+| residual-c32-h128-518d814dce | pre_change_last50 | 365/423/12 | 46.3750% | -0.071000 | 0.830451 | 0.017392 |
+| residual-c32-h128-518d814dce | phase2_first50 | 385/386/29 | 49.9375% | 0.002375 | 0.830258 | 0.023113 |
+| residual-c32-h128-518d814dce | last50 | 289/481/30 | 38.0000% | -0.236250 | 0.801668 | 0.022160 |
+| residual-c32-h128-518d814dce | phase2 | 6903/8687/410 | 44.4250% | -0.108938 | 0.821731 | 0.017500 |
+
+For this analysis artifact pre_change_last50=1151–1200, phase2_first50=1201–1250, last50=2151–2200, phase2=1201–2200. Gamma/lambda are unchanged at0.99/1.
+
+### Final frozen head-to-head
+
+100 games, five seeds743291–743295,50 games per color; same protocol as stage44 latest-versus-latest.
+
+```json
+{
+  "a": "Full CNN RL latest2200",
+  "b": "Residual RL latest2200",
+  "wins": 54,
+  "losses": 43,
+  "draws": 3,
+  "score": 0.555,
+  "by_color": {
+    "white": {
+      "wins": 34,
+      "losses": 15,
+      "draws": 1
+    },
+    "black": {
+      "wins": 20,
+      "losses": 28,
+      "draws": 2
+    }
+  },
+  "reasons": {
+    "King capturable": 97,
+    "Threefold repetition": 3
+  },
+  "mean_plies": 76.31,
+  "seed_scores": [
+    {
+      "seed": 743291,
+      "score": 0.55
+    },
+    {
+      "seed": 743292,
+      "score": 0.4
+    },
+    {
+      "seed": 743293,
+      "score": 0.675
+    },
+    {
+      "seed": 743294,
+      "score": 0.525
+    },
+    {
+      "seed": 743295,
+      "score": 0.625
+    }
+  ]
+}
+```
+
+### Optimization, feature health and verification
+
+
+#### cnn-c64-h256-8ebd1cf653
+
+```json
+{
+  "phase_ppo": {
+    "policy_loss": -0.011570924306611866,
+    "value_loss": 0.310514960639097,
+    "total_loss": 0.13047865206645348,
+    "endpoint_kl": 0.003828349356073886,
+    "endpoint_entropy": 1.3201950360536576,
+    "ratio_clip_fraction": 0.017418791295320035,
+    "gradient_clipped_fraction": 1.0,
+    "pre_clip_gradient_l2": 23.307913818842923,
+    "gradient_global_max": 58.34077270889282
+  },
+  "last50_ppo": {
+    "policy_loss": -0.011402719680735833,
+    "value_loss": 0.29386623390770616,
+    "total_loss": 0.12150575554615331,
+    "endpoint_kl": 0.003991724716033786,
+    "endpoint_entropy": 1.402155249118805,
+    "ratio_clip_fraction": 0.01739006962888529,
+    "gradient_clipped_fraction": 1.0,
+    "pre_clip_gradient_l2": 22.63875496520841,
+    "gradient_global_max": 55.27048973083496
+  },
+  "early_stop_updates": 6,
+  "largest_raw_gradient": 961.3421630859375,
+  "largest_endpoint_kl": 0.014484427869319916,
+  "optimizer_steps": 20076,
+  "decisions": 579180,
+  "mean_plies": 72.4573125,
+  "termination_reasons": {
+    "King capturable": 15590,
+    "Threefold repetition": 409,
+    "Move limit reached": 1
+  },
+  "final_evaluation": {
+    "update": 2200,
+    "mean_score": 0.75,
+    "mean_reward": 0.505,
+    "opponents": {
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/best_policy.pt": {
+        "wins": 13,
+        "losses": 5,
+        "draws": 2,
+        "failures": 0,
+        "score": 0.7,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 7,
+            "losses": 1,
+            "draws": 2
+          },
+          "black": {
+            "wins": 6,
+            "losses": 4,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "Threefold repetition": 1,
+          "King capturable": 18,
+          "Move limit reached": 1
+        },
+        "mean_reward": 0.41,
+        "mean_plies": 79.35,
+        "value_monte_carlo": {
+          "mse": 0.5280382633209229,
+          "rmse": 0.7266623973846436,
+          "mae": 0.6364797353744507,
+          "explained_variance": -0.09489107131958008,
+          "prediction_mean": 0.06514744460582733,
+          "prediction_std": 0.3360937237739563,
+          "target_mean": 0.2723221778869629,
+          "target_std": 0.6656374335289001,
+          "samples": 791
+        }
+      },
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/full-data-plain-cnn-adamw-bn-8epochs-job27800942/best_policy.pt": {
+        "wins": 16,
+        "losses": 4,
+        "draws": 0,
+        "failures": 0,
+        "score": 0.8,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 8,
+            "losses": 2,
+            "draws": 0
+          },
+          "black": {
+            "wins": 8,
+            "losses": 2,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "King capturable": 20
+        },
+        "mean_reward": 0.6,
+        "mean_plies": 57.8,
+        "value_monte_carlo": {
+          "mse": 0.5907264351844788,
+          "rmse": 0.7685872912406921,
+          "mae": 0.70185387134552,
+          "explained_variance": -0.14932847023010254,
+          "prediction_mean": 0.15574923157691956,
+          "prediction_std": 0.26876604557037354,
+          "target_mean": 0.6168216466903687,
+          "target_std": 0.5735924243927002,
+          "samples": 575
+        }
+      }
+    }
+  },
+  "best_evaluation": {
+    "update": 1170,
+    "mean_score": 0.85,
+    "mean_reward": 0.7,
+    "opponents": {
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/best_policy.pt": {
+        "wins": 19,
+        "losses": 1,
+        "draws": 0,
+        "failures": 0,
+        "score": 0.95,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 9,
+            "losses": 1,
+            "draws": 0
+          },
+          "black": {
+            "wins": 10,
+            "losses": 0,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "King capturable": 20
+        },
+        "mean_reward": 0.9,
+        "mean_plies": 58.85,
+        "value_monte_carlo": {
+          "mse": 0.8343842625617981,
+          "rmse": 0.9134463667869568,
+          "mae": 0.8914403915405273,
+          "explained_variance": -0.025522470474243164,
+          "prediction_mean": -0.07725625485181808,
+          "prediction_std": 0.16252480447292328,
+          "target_mean": 0.7153176665306091,
+          "target_std": 0.4484180510044098,
+          "samples": 584
+        }
+      },
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/full-data-plain-cnn-adamw-bn-8epochs-job27800942/best_policy.pt": {
+        "wins": 15,
+        "losses": 5,
+        "draws": 0,
+        "failures": 0,
+        "score": 0.75,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 10,
+            "losses": 0,
+            "draws": 0
+          },
+          "black": {
+            "wins": 5,
+            "losses": 5,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "King capturable": 20
+        },
+        "mean_reward": 0.5,
+        "mean_plies": 68.75,
+        "value_monte_carlo": {
+          "mse": 0.7834465503692627,
+          "rmse": 0.8851251602172852,
+          "mae": 0.8536926507949829,
+          "explained_variance": 0.05083513259887695,
+          "prediction_mean": -0.1198059543967247,
+          "prediction_std": 0.16016212105751038,
+          "target_mean": 0.37958431243896484,
+          "target_std": 0.7501057982444763,
+          "samples": 685
+        }
+      }
+    }
+  },
+  "features1200": {
+    "encoder.1": {
+      "zero_fraction": 0.5113863945007324,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.05668428258908208,
+      "top4_activity_share": 0.1739516882333672
+    },
+    "encoder.3": {
+      "zero_fraction": 0.9575161933898926,
+      "dormant_fraction": 0.21875,
+      "top1_activity_share": 0.23732393195244889,
+      "top4_activity_share": 0.7972560787752949
+    },
+    "encoder.6": {
+      "zero_fraction": 0.6273651123046875,
+      "dormant_fraction": 0.17578125,
+      "top1_activity_share": 0.3024195593863404,
+      "top4_activity_share": 0.9076698504109654
+    }
+  },
+  "features2200": {
+    "encoder.1": {
+      "zero_fraction": 0.5114965438842773,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.05651645244555318,
+      "top4_activity_share": 0.1749294645972145
+    },
+    "encoder.3": {
+      "zero_fraction": 0.9595170021057129,
+      "dormant_fraction": 0.1875,
+      "top1_activity_share": 0.2502503366212013,
+      "top4_activity_share": 0.8025328316965644
+    },
+    "encoder.6": {
+      "zero_fraction": 0.6435546875,
+      "dormant_fraction": 0.19921875,
+      "top1_activity_share": 0.30458393251690097,
+      "top4_activity_share": 0.9136504820753797
+    }
+  },
+  "verification": {
+    "update": 2200,
+    "source_sha256": "7ba9870bb4151241c50c7d288e892725806f9fab6e7f3844aaa445b812d4656c",
+    "canonical_sha256": "b06b765441fcf4335923d765f3e6d1e704d4f6b92f34c2f878e29fb92bf19352",
+    "finite": true,
+    "one_rl_checkpoint": true,
+    "update1200_row_preserved": true
+  }
+}
+```
+
+
+#### residual-c32-h128-518d814dce
+
+```json
+{
+  "phase_ppo": {
+    "policy_loss": -0.012005753600140426,
+    "value_loss": 0.32791692026354086,
+    "total_loss": 0.13818075408206718,
+    "endpoint_kl": 0.00829648078524042,
+    "endpoint_entropy": 1.3764951940774917,
+    "ratio_clip_fraction": 0.04189782436527317,
+    "gradient_clipped_fraction": 1.0,
+    "pre_clip_gradient_l2": 138.16229518864068,
+    "gradient_global_max": 441.32716264343264
+  },
+  "last50_ppo": {
+    "policy_loss": -0.011877679651914804,
+    "value_loss": 0.31153947682020233,
+    "total_loss": 0.13017941596251878,
+    "endpoint_kl": 0.009696955597028135,
+    "endpoint_entropy": 1.3731897211074828,
+    "ratio_clip_fraction": 0.04748548820081166,
+    "gradient_clipped_fraction": 1.0,
+    "pre_clip_gradient_l2": 143.6267972299387,
+    "gradient_global_max": 378.21587951660155
+  },
+  "early_stop_updates": 34,
+  "largest_raw_gradient": 5890.8232421875,
+  "largest_endpoint_kl": 0.03055417351424694,
+  "optimizer_steps": 19941,
+  "decisions": 580137,
+  "mean_plies": 72.4573125,
+  "termination_reasons": {
+    "King capturable": 15590,
+    "Threefold repetition": 409,
+    "Move limit reached": 1
+  },
+  "final_evaluation": {
+    "update": 2200,
+    "mean_score": 0.65,
+    "mean_reward": 0.3,
+    "opponents": {
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/best_policy.pt": {
+        "wins": 16,
+        "losses": 4,
+        "draws": 0,
+        "failures": 0,
+        "score": 0.8,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 8,
+            "losses": 2,
+            "draws": 0
+          },
+          "black": {
+            "wins": 8,
+            "losses": 2,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "King capturable": 20
+        },
+        "mean_reward": 0.6,
+        "mean_plies": 65.2,
+        "value_monte_carlo": {
+          "mse": 0.9204868674278259,
+          "rmse": 0.9594200849533081,
+          "mae": 0.942147433757782,
+          "explained_variance": -0.060378313064575195,
+          "prediction_mean": -0.1528095155954361,
+          "prediction_std": 0.15677547454833984,
+          "target_mean": 0.5524688959121704,
+          "target_std": 0.6316482424736023,
+          "samples": 649
+        }
+      },
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/full-data-plain-cnn-adamw-bn-8epochs-job27800942/best_policy.pt": {
+        "wins": 10,
+        "losses": 10,
+        "draws": 0,
+        "failures": 0,
+        "score": 0.5,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 6,
+            "losses": 4,
+            "draws": 0
+          },
+          "black": {
+            "wins": 4,
+            "losses": 6,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "King capturable": 20
+        },
+        "mean_reward": 0.0,
+        "mean_plies": 60.2,
+        "value_monte_carlo": {
+          "mse": 0.7528155446052551,
+          "rmse": 0.8676494359970093,
+          "mae": 0.8365158438682556,
+          "explained_variance": 0.01839500665664673,
+          "prediction_mean": -0.14039821922779083,
+          "prediction_std": 0.16226746141910553,
+          "target_mean": 0.036664120852947235,
+          "target_std": 0.8573123812675476,
+          "samples": 602
+        }
+      }
+    }
+  },
+  "best_evaluation": {
+    "update": 1200,
+    "mean_score": 0.85,
+    "mean_reward": 0.7,
+    "opponents": {
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/residual-medium-27890681/best_policy.pt": {
+        "wins": 15,
+        "losses": 5,
+        "draws": 0,
+        "failures": 0,
+        "score": 0.75,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 8,
+            "losses": 2,
+            "draws": 0
+          },
+          "black": {
+            "wins": 7,
+            "losses": 3,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "King capturable": 20
+        },
+        "mean_reward": 0.5,
+        "mean_plies": 75.75,
+        "value_monte_carlo": {
+          "mse": 0.7501545548439026,
+          "rmse": 0.866114616394043,
+          "mae": 0.8334201574325562,
+          "explained_variance": 0.07632690668106079,
+          "prediction_mean": -0.12789799273014069,
+          "prediction_std": 0.16366198658943176,
+          "target_mean": 0.3582569658756256,
+          "target_std": 0.7458323836326599,
+          "samples": 755
+        }
+      },
+      "/Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/full-data-plain-cnn-adamw-bn-8epochs-job27800942/best_policy.pt": {
+        "wins": 19,
+        "losses": 1,
+        "draws": 0,
+        "failures": 0,
+        "score": 0.95,
+        "games": 20,
+        "by_color": {
+          "white": {
+            "wins": 9,
+            "losses": 1,
+            "draws": 0
+          },
+          "black": {
+            "wins": 10,
+            "losses": 0,
+            "draws": 0
+          }
+        },
+        "reasons": {
+          "King capturable": 20
+        },
+        "mean_reward": 0.9,
+        "mean_plies": 70.15,
+        "value_monte_carlo": {
+          "mse": 0.8840565085411072,
+          "rmse": 0.9402427673339844,
+          "mae": 0.923287570476532,
+          "explained_variance": -0.08369863033294678,
+          "prediction_mean": -0.10998078435659409,
+          "prediction_std": 0.15546000003814697,
+          "target_mean": 0.748103678226471,
+          "target_std": 0.36923739314079285,
+          "samples": 697
+        }
+      }
+    }
+  },
+  "features1200": {
+    "encoder.1": {
+      "zero_fraction": 0.4449586868286133,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.07405003519423335,
+      "top4_activity_share": 0.2543121089496898
+    },
+    "encoder.2.0.relu1": {
+      "zero_fraction": 0.5848751068115234,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.0880653695532022,
+      "top4_activity_share": 0.29365345811662336
+    },
+    "encoder.2.0.relu2": {
+      "zero_fraction": 0.7070102691650391,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.1633749400028517,
+      "top4_activity_share": 0.44672100498451167
+    },
+    "encoder.2.1.relu1": {
+      "zero_fraction": 0.48252296447753906,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.22109280103641973,
+      "top4_activity_share": 0.504125527058736
+    },
+    "encoder.2.1.relu2": {
+      "zero_fraction": 0.9228420257568359,
+      "dormant_fraction": 0.25,
+      "top1_activity_share": 0.514514277469061,
+      "top4_activity_share": 0.9016219663817893
+    },
+    "encoder.2.2.relu1": {
+      "zero_fraction": 0.6735725402832031,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.1616185140642077,
+      "top4_activity_share": 0.43140818103141443
+    },
+    "encoder.2.2.relu2": {
+      "zero_fraction": 0.9601659774780273,
+      "dormant_fraction": 0.5625,
+      "top1_activity_share": 0.8989174527950764,
+      "top4_activity_share": 0.9801234437013668
+    },
+    "encoder.6": {
+      "zero_fraction": 0.476959228515625,
+      "dormant_fraction": 0.1015625,
+      "top1_activity_share": 0.06731348542623257,
+      "top4_activity_share": 0.1737231813665922
+    }
+  },
+  "features2200": {
+    "encoder.1": {
+      "zero_fraction": 0.4503917694091797,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.07635926117248898,
+      "top4_activity_share": 0.2584614446610005
+    },
+    "encoder.2.0.relu1": {
+      "zero_fraction": 0.5664234161376953,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.09083958709518158,
+      "top4_activity_share": 0.2779435996467783
+    },
+    "encoder.2.0.relu2": {
+      "zero_fraction": 0.726008415222168,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.19481757947717163,
+      "top4_activity_share": 0.48659553170813497
+    },
+    "encoder.2.1.relu1": {
+      "zero_fraction": 0.49628257751464844,
+      "dormant_fraction": 0.0,
+      "top1_activity_share": 0.24025661285812427,
+      "top4_activity_share": 0.5080069204570928
+    },
+    "encoder.2.1.relu2": {
+      "zero_fraction": 0.9206752777099609,
+      "dormant_fraction": 0.28125,
+      "top1_activity_share": 0.498007835806129,
+      "top4_activity_share": 0.9053716232957082
+    },
+    "encoder.2.2.relu1": {
+      "zero_fraction": 0.6726474761962891,
+      "dormant_fraction": 0.03125,
+      "top1_activity_share": 0.1510794207441133,
+      "top4_activity_share": 0.4192257276888645
+    },
+    "encoder.2.2.relu2": {
+      "zero_fraction": 0.9514760971069336,
+      "dormant_fraction": 0.46875,
+      "top1_activity_share": 0.892261653593173,
+      "top4_activity_share": 0.979898024403335
+    },
+    "encoder.6": {
+      "zero_fraction": 0.54205322265625,
+      "dormant_fraction": 0.1015625,
+      "top1_activity_share": 0.07836352030151748,
+      "top4_activity_share": 0.19451994696011451
+    }
+  },
+  "verification": {
+    "update": 2200,
+    "source_sha256": "203d399c41d13259d6b2d2e78fe34072aa555e7674114521d7ef111d92a8fedd",
+    "canonical_sha256": "c7b114b2514feaa5976169566ab11b0c0ff4d01d104086c9b49635e0379b3b44",
+    "finite": true,
+    "one_rl_checkpoint": true,
+    "update1200_row_preserved": true
+  }
+}
+```
+
+
+### Takeaways and next steps
+
+1. Additional training did not establish a large, consistent frozen-baseline strength gain. Latest fullCNN moved80→82.5%; latest residual78→58.5% on the repeated100-game benchmark. The fullCNN change is small relative to sampling uncertainty. Residual declined19.5 percentage points, a material warning of benchmark regression; confirm across more seeds before attributing it to forgetting or a specific training defect. This does not support another long unchanged continuation for both models.
+
+2. FullCNN gained relative ground against residual: phase score55.575%, late50-update score62%. The independent final100-game match was54W43L3D for fullCNN (55.5%), compared with44W52L4D (46%) at1200 on the same five-seed protocol. Both samples remain uncertain and compare two changing actors; this does not isolate absolute improvement or residual forgetting.
+
+3. Critics improved modestly in error but remain weak. Late MC RMSE0.8376→0.8085/full and0.8305→0.8017/residual, EV0.0253→0.0387 and0.0174→0.0222. Better RMSE can also reflect changed outcome/trajectory distributions. The next intervention should be measured against fresh outcome metrics and playing strength, not training loss alone.
+
+4. Gradient clipping remains100%; late KL about0.0040/full and0.0097/residual, finite checkpoints, no logged execution errors. Raw gradient spikes (phase maxima961/full,5891/residual) did not imply uncontrolled policy updates. Feature concentration persists: full secondconv top4 about80.3%, dense top4 about91.4%; residual lasttrunk top1 about89.2%, dormancy46.875%. No evidence that simply training longer repairs the representation pattern.
+
+5. Saved best actors remain full1170 and residual1200. Their repeated benchmark values should reproduce prior results; no new selector peak exceeded the existing85%. Current selection remains40-game fixed-opponent score, not incumbent head-to-head promotion. Preserve them; the noisy selector and absence of best updates do not establish that later policies are worse.
+
+6. Before another long unchanged run, prioritize an enlarged multi-seed evaluation of latest versus incumbent policies. A focused training experiment worth trying next is64 versus16 games/update at matched total games (four times fewer updates for64), testing whether less noisy on-policy estimates help. This is a hypothesis, not a demonstrated fix. If doing critic-specific fitting, more independent fresh games plus short fitting/early stopping is supported more than additional epochs on a small fixed dataset. Avoid simultaneous architecture/optimizer changes. No further training is launched here.
+
+Artifacts: out/rl/paired-lambda1-2200-analysis.json; paired-lambda1-2200-evaluation.json; out/experiments/paired-ppo-updates1201-2200/comparison.png, verification.json, head-to-head/results.json. Full per-opponent value metrics, color outcomes and termination details are retained in evaluation JSON. Scripts work/analyze_pair_2200.py, evaluate_pair_2200.py, report_pair_2200.py. Logs logs/ppo-pair-1201-2200.out/.err, ppo-pair-2200-evaluation.out/.err and ppo-pair-2200-head-to-head.out/.err. Previous reports/evaluation artifacts remain unchanged.
+
+
+### Supplement: direct incumbent checks and four-actor tournament
+
+Following the residual benchmark warning, evaluated all four distinct latest/incumbent actors directly:6 matchups ×100 games=600 unique games,300 appearances/actor. Temperature0.9, max256 plies, five seeds743291–743295,20 games/seed, balanced colors. The latest-vs-latest result reproduces the earlier stage45 match on the same protocol, so it is not independent extra evidence and should not be counted twice. This tournament adds the missing direct incumbent comparisons. No checkpoint was promoted or reset.
+
+| A | B | A W/L/D | A score | Approximate95% score interval |
+| --- | --- | --- | --- | --- |
+| Full latest2200 | Full best1170 | 58/37/5 | 60.5% | 51.1%–69.9% |
+| Full latest2200 | Residual latest2200 | 54/43/3 | 55.5% | 45.9%–65.1% |
+| Full latest2200 | Residual best1200 | 61/37/2 | 62.0% | 52.5%–71.5% |
+| Full best1170 | Residual latest2200 | 61/39/0 | 61.0% | 51.4%–70.6% |
+| Full best1170 | Residual best1200 | 49/49/2 | 50.0% | 40.2%–59.8% |
+| Residual latest2200 | Residual best1200 | 36/61/3 | 37.5% | 28.1%–46.9% |
+
+Normal-approximation per-game intervals are descriptive, unadjusted for multiple comparisons, and omit training-seed uncertainty. They favor full latest over its incumbent (~51.2–69.8% score) and residual incumbent over residual latest (latest~28.1–46.9%). Stronger evidence than the previous close1200/1170 match, but broader opponent robustness remains unmeasured.
+
+Updated interpretation: the residual regression is supported by direct incumbent play, not just the single repeated-baseline sample. FullCNN latest shows evidence of improvement over its stored incumbent. This does not identify whether moving-opponent adaptation, forgetting, optimization noise or another mechanism caused the different trajectories. Do not conclude that lower critic RMSE guarantees actor improvement.
+
+Updated recommendation: prioritize a reliable challenger-versus-incumbent promotion gate and a broader fixed evaluation panel before another long unchanged continuation. Preserve residual incumbent1200; latest2200 remains available for intentional continuation. A controlled small follow-up can test a frozen incumbent opponent or a simple mixture of frozen/current opponents at matched games, isolating opponent nonstationarity without requiring PSRO. The earlier16-vs64-games/update experiment remains an alternative variance-reduction hypothesis, not a demonstrated fix. No new training or selector change is performed here.
+
+Additional artifacts: out/experiments/rl2200-latest-vs-saved-best-round-robin/results.json (all per-color and per-seed outcomes and actor hashes); out/rl/paired-lambda1-2200-comparison.png (fresh value trends and four-actor standings). Analysis now also contains last200 and ten100-update windows; old report window labels pre_change_last50/phase2 correspond to previous50/phase in the extended JSON schema.
+
+
+<a id="stage-46"></a>
+
+## 46. Literature review: robust fog-of-war play and whether to adopt PSRO (2026-11-05; proposal only)
+
+User asked how to build a strong fog-of-war bot and whether to move to PSRO after the nonuniform2200 continuation. No new training, architecture, payoff solver or archive was implemented in this review.
+
+### What the literature supports
+
+- Lanctot et al., *A Unified Game-Theoretic Approach to Multiagent Reinforcement Learning* (NeurIPS2017), https://arxiv.org/abs/1711.00832, full text https://arxiv.org/html/1711.00832. PSRO grows an empirical game of policies: estimate payoffs, compute a meta-strategy, use RL to train approximate responses against sampled fixed opponents, add responses and update the empirical game. PPO can remain the response-learning algorithm. The learned solution is a policy mixture; it need not be a single dominant network. A restricted-game solution is not evidence of low exploitability in the full game, especially with approximate response learning and noisy payoffs. Frozen-history sampling alone is useful but does not implement the proposed payoff/meta-solver/population-expansion loop.
+- Vinyals et al., *Grandmaster level in StarCraft II using multi-agent reinforcement learning* (Nature2019), primary lab account https://deepmind.google/blog/alphastar-grandmaster-level-in-starcraft-ii-using-multi-agent-reinforcement-learning/, paper https://doi.org/10.1038/s41586-019-1724-z. Historical opponents and exploiters address forgetting and strategic weaknesses that ordinary self-play can leave behind. This supports population training, but does not establish that our measured residual regression was caused by forgetting or a strategic cycle. We have not demonstrated a nontransitive cycle in our small pool.
+- Perolat et al., *Mastering the Game of Stratego with Model-Free Multiagent Reinforcement Learning* (Science2022), https://arxiv.org/abs/2206.15378, full text https://arxiv.org/html/2206.15378. DeepNash demonstrates strong imperfect-information play without search, using regularized Nash dynamics rather than PSRO. Its CNN inputs encode accumulated knowledge plus the last40 moves. The transferable lessons are history/information representation and stabilized game-theoretic learning; adopting a recurrent network or PSRO is not the only possible route. Its scale and game differ substantially from ours.
+- Brown et al., *Combining Deep Reinforcement Learning and Search for Imperfect-Information Games* (NeurIPS2020), https://arxiv.org/abs/2007.13544, paper https://proceedings.neurips.cc/paper/2020/file/c61f571dbd2fb949d3fe5ae1608dd48b-Paper.pdf. ReBeL uses public belief states and equilibrium-aware search rather than a single assumed full board. It is not a drop-in AlphaZero/MCTS replacement for our private fog observations. Its theoretical results have assumptions about two-player zero-sum games, representations and solving accuracy which do not carry over automatically to our PPO implementation.
+- *Scalable decision-making for games of imperfect information* (Nature2026; Ataraxos), https://www.nature.com/articles/s41586-026-11036-y, open full text https://pmc.ncbi.nlm.nih.gov/articles/PMC13626944/. Demonstrates a different successful route in Stratego: controlled/regularized self-play updates, a separately trained hidden-information belief model, and test-time search over plausible hidden states. The paper reports a15W1L4D match against a decorated human champion. It supports treating beliefs/search as a serious longer-term direction, not evidence that our problem requires full PSRO. Performance and compute numbers are specific to that system; its custom simulator is not a recommendation to reimplement our game.
+
+### Mapping to our measured setup
+
+Our current CNN actor and value network receive only64 current observation tokens expanded to14 planes. ObservationTracker keeps limited history for candidate moves (including castling/en-passant information), but that information is not directly provided to the learned CNN features/value. The action mask may convey some history indirectly. The previous recurrent imitation model exists but recurrent PPO was explicitly excluded from the present infrastructure. Thus current PPO is restricted to a largely reactive representation: distinct observation histories with identical visible boards can yield the same unmasked policy/value predictions. More population diversity cannot recover information the network never receives.
+
+The current residual decline is supported both by its repeated-baseline score78→58.5% and its36W61L3D loss to incumbent1200. That motivates robust opponent coverage, but does not identify forgetting, nontransitivity or moving-opponent instability as the cause. Weak critics, approximation/optimization limitations and sampling uncertainty remain relevant. We should not describe PSRO as a demonstrated repair or guarantee.
+
+### Recommended staged design
+
+1. Adopt a small frozen-policy population now rather than another long two-moving-agent continuation. Initial candidates can be both supervised baselines, full latest2200, full incumbent1170, residual latest2200, residual incumbent1200. Deduplicate identical actor states. Preserve older useful strategies, not only the latest and the highest noisy selector score. The canonical continuation policy per variant can remain one file; immutable population snapshots require their own persistent representation, for example embedded inference states with manifest/hashes. That storage design is not implemented by this review.
+2. If implementing actual PSRO, retain the pairwise payoff table and compute a population meta-strategy, then train a fullCNN response and a residual response against frozen opponents sampled once per episode from a fixed distribution for that response round. Learners can train in parallel; neither should chase the other's changing weights inside that round. Warm-start from strong existing actors rather than discarding imitation/PPO progress. Add evaluated responses and recompute the meta-strategy. PPO remains the inner optimizer, lambda1 remains provisional, and actor architecture can initially remain unchanged. Solver weights must account for noisy payoffs; a numerical equilibrium of a noisy small matrix is not an exact game solution.
+3. First compare that proposed meta-strategy sampling against a simple uniform frozen-population baseline at matched actual game/decision budgets, using held-out seeds and cross-play. This tests whether solver weighting adds value beyond merely retaining opponents. Current in-pool average score, worst matchup and response-training attacks are useful measures; empirical attacker success is not exact exploitability. Do not select solely by beating the previous incumbent, since a specialist may do that while losing broader coverage.
+4. Independently test observation history as an architecture/input ablation: a short observation stack or explicit last-seen piece information plus age/visibility (stale information is not known current truth), or later recurrent PPO. Build from each player's own observation/action history only, keep train-time/inference contracts consistent, and never expose hidden true boards to the deployed actor. This is not evidence that history will necessarily fix the critic; test it on games and prediction metrics. Do not change history inputs and opponent scheduling in the same first experiment if attribution matters.
+5. For substantially stronger fog-of-war play, consider a learned belief distribution over hidden states, followed by information-aware planning using the existing game engine where supported. Self-play true states may supervise belief targets during training, while belief-model inputs and deployed decisions use only allowed observations. Simply filling unseen squares with one guessed board and treating it as certain is not a principled solution. Search is a later engineering/research stage; no engine reimplementation is proposed.
+
+### Payoff convention to settle before claiming Nash guarantees
+
+Current training terminal utilities are win+1/loss−1/draw+0.1 for both players. Their sum is0 for decisive games and0.2 for draws, so this reward game is not zero-sum/constant-sum. Standard score (1/.5/0) is constant-sum; centered outcome (1/0/−1) is zero-sum. Gamma0.99 per own decision additionally gives a timing preference. PSRO can be formulated for general-sum games, but a zero-sum matrix solver on standard scores plus PPO optimizing the current discounted draw-bonus reward is an approximate response setup for a different objective; ordinary zero-sum convergence claims do not apply. Preserve the user's draw preference unless explicitly changed, and document the distinction rather than silently changing rewards. The game-theoretic target and response objective should be chosen together.
+
+Recommendation: move toward a small PSRO/population loop as the next training-system experiment, while prioritizing history-aware information representation for stronger fog-of-war decisions. PSRO is a plausible response to restricted opponent coverage; it does not solve missing information, critic capacity or approximate best-response quality. No implementation or further run was authorized by this question or launched here.
+
+<a id="stage-47"></a>
+
+## 47. Premature local history pilot (2026-11-05; cancelled by user)
+
+User endorsed history-enriched imitation pretraining, then PPO against existing full/residual CNNs, then evaluation before PSRO. Implemented and launched a local controlled pilot to establish the pipeline and assess the representation before a full-data training commitment. No PSRO code or large full-data run is launched here.
+
+### Representation and contract
+
+Feedforward CNN input is the current player observation plus the previous3 observations received by that player, sampled at every game ply. Newest frame first; four64-token views expand to56 one-hot channels. Game-start missing history is entirely unknown, not copied from future observations. Views include the player's observations on opponent turns, as supplied by the existing referee protocol. This is a short observation stack, not a full belief state or persistent last-seen memory. A hidden piece that disappears longer than the stack horizon is not retained explicitly.
+
+Shared ObservationHistory logic is used by imitation examples, held-out probes, in-process agents and standalone bots. PPO records complete stacked tokens before action selection and uses exactly those tokens during optimization. No hidden board is used as model input; data targets remain recorded actions, and the canonical referee handles all game rules. Tests verify color separation, reset, ordering/padding, no future/hidden-board dependence, actual gameplay-to-replay alignment and standalone/in-process encoding compatibility.
+
+Current-only legacy checkpoints remain compatible, including unchanged canonical variant identities. New history models have distinct history4-prefixed identities, one canonical RL file per new architecture, independently preserved latest/best state, normal optimizer/RNG resume, and supported standalone export. The original full/residual canonical files are never written by the pipeline. Frozen inference-only opponent snapshots are preserved under this experiment.
+
+### Controlled imitation pretraining
+
+Both current-only and history4 models use a medium residual CNN32/128,3 residual blocks, convolutional BN and dropout0.1. Initial predictions and all shared weights are exactly matched: the current-view stem uses ordinary initialization, additional history kernels are zero-initialized and trainable, and their creation preserves the RNG stream. This is not He reinitialization. New history input adds only first-convolution parameters; later layers are identical. One training seed7980, not a multi-seed architecture result.
+
+Exact file split copied from the prior2560-game architecture pilot:2560 selected training files (2559 usable games),248396 action positions;64 validation games,6147 positions. Empty/unusable labeled-game handling is shared between arms. Eight epochs each, batch128 (1941 updates/epoch,15528 total), AdamW startLR1e-4, peak3e-4 after3 warmup epochs (5823 updates), cosine floor1e-5, betas0.9/0.99, epsilon1e-8, decay0.01, global gradient clip5. Selected imitation checkpoint maximizes legal top1 accuracy on a fixed2048-position validation probe. Loss/top1/top5, layer gradients, update ratios, LR, activation statistics/histograms and plots reuse the existing trainer. This is a matched new control and a new conservative LR recipe, not an exact replay of earlier pilot optimizer trajectories.
+
+The small pilot has far less imitation data than existing full-data baseline models; losing to those models would not prove history is harmful. Compare history versus current-only control first. This is preliminary validation evidence, not an independent final test of imitation generalization.
+
+### PPO and evaluation sequence
+
+1. Complete both imitation arms; evaluate each against frozen fullCNN latest2200 and residual incumbent1200 on seeds743291/743292,50 games/opponent/seed (200 per candidate).
+2. Initialize only the history model's actor from its selected imitation weights and zero its previously unsupervised value head using the existing PPO rule. Train400 PPO updates,16 games/update (6400 fresh games), lambda1, gamma0.99, unchanged PPO optimizer/clip/entropy recipe, against the two frozen opponents sampled by the existing pool. Existing full/residual actors do not update. In-loop evaluations every20 updates,20 games per opponent. Store the history RL model in its separate canonical variant directory.
+3. Run a five-seed100-game/pair color-balanced round robin including current-only imitation, history imitation, history PPO latest/best (deduplicate if equal), full2200 and residual1200. Record before/after playing strength, value metrics, rewards/outcomes, stability and feature diagnostics. The control does not receive matched PPO; therefore a final history-PPO versus control-imitation advantage cannot be attributed solely to history inputs. Imitation comparison isolates the representation more directly; post-PPO comparison measures the whole pipeline.
+
+### Verification, launch and artifacts
+
+All67 unit tests passed in23.7s after implementation. Includes meaningful new history leakage/alignment/reset tests, matched-function/gradient tests, one tiny imitation/PPO integration path, exported game-protocol play and legacy canonical-ID checks. No training hyperparameter was changed based on an early pilot outcome.
+
+Pipeline: work/run_history_cnn_experiment.py. Launched exec session76469. Master logs logs/history-cnn-pipeline.out/.err; phase logs logs/history-pilot-current-control-imitation.out/.err, logs/history-pilot-history4-imitation.out/.err, logs/history-pilot-ppo.out/.err. Experiment directory: out/experiments/history4-cnn-imitation-then-ppo-pilot/. pipeline.json stores recipe/progress/source/opponent hashes; split.json stores exact selected games; current-control/ and history4/ hold imitation diagnostics/checkpoints; imitation-arena.json holds pre-PPO evaluations; tournament/results.json holds final cross-play. Canonical history RL location is added to pipeline.json when its model identity is known.
+
+Pipeline skips completed phases and resumes interrupted imitation epoch/PPO update boundaries; do not start a duplicate while it is active. The existing heartbeat monitor was repurposed to watch completion/recover concrete execution defects, append measured results and recommendations, and pause after final delivery. Results pending. No empirical claim that history helps has been made at launch.
+
+### Cancellation and corrected scope
+
+User clarified that feature design should be discussed before implementation/training, and imitation pretraining should run on the server. The local launch was premature. Cancelled the pipeline and active child trainer (both logs record KeyboardInterrupt; exec session76469 exited130) and paused the heartbeat monitor. Only the current-view control completed2 epochs, with epoch3 interrupted. The actual history model, PPO and planned evaluations never started. No results from this partial control establish anything about history inputs. Both original full/residual canonical checkpoint hashes verified unchanged. Partial artifacts and unreviewed prototype code remain for traceability, not an approved architecture or ready-to-run training plan. Do not resume this pilot or deploy its input design without the user choosing features and server recipe. pipeline.json and partial metrics.json are marked cancelled_by_user.
+
+<a id="stage-48"></a>
+
+## 48. History features: Obscuro and neural blind-chess literature (2026-11-05; design discussion only)
+
+User clarified that history should include our own past moves, and favored current observation + last-seen observation + age. This is a design discussion; the cancelled prototype remains unapproved, no model input was changed for this review, and no training restarted.
+
+Primary sources checked:
+
+1. Zhang and Sandholm, *General search techniques without common knowledge for imperfect-information games, and application to superhuman Fog of War chess* (Obscuro), https://arxiv.org/abs/2506.01242; full text https://arxiv.org/html/2506.01242, section3 and appendixC.1. Obscuro retains the full set of positions compatible with its accumulated observations (including castling/en-passant rights), samples positions for imperfect-information subgame search, and uses Stockfish14 leaf evaluations. It is not a directly comparable history-plane CNN/PPO architecture. The paper does not establish the specific current+last-seen+age representation proposed here. Its success supports retaining historical information but not a claim that it tested our chosen neural features.
+2. Bertram, Fürnkranz and Müller, *Supervised and Reinforcement Learning from Observations in Reconnaissance Blind Chess* (CoG2022), https://arxiv.org/abs/2208.02029; full text https://arxiv.org/html/2208.02029, sectionIII/tableI. Uses20 observations,90 spatial planes each (1800 total), including own last action encoded with73 move planes, own-piece positions, sensing information, known capture squares, illegal-move result and player color. Imitation pretraining precedes PPO with past self opponents. The authors report recurrent alternatives taking longer without better prediction accuracy in their setup, not a universal argument against recurrence. This is close methodological precedent for our imitation→PPO idea, but RBC has different sensing/action feedback from our FoW rules, so sensing/illegal-action channels do not transfer mechanically. Their modest playing strength also does not establish that observation stacking alone produces superhuman play.
+3. Bertram, Fürnkranz and Müller, *Neural Network-based Information Set Weighting for Playing Reconnaissance Blind Chess* (IEEE Transactions on Games2024), https://arxiv.org/abs/2407.05864; full text https://arxiv.org/html/2407.05864, sectionV-B/tableI. Again uses20 recent turns with own requested-move encoding and observation feedback, here to weight possible board states with neural networks rather than directly choose moves. Direct evidence that action-observation history is useful input design precedent; not an ablation proving an optimal history length or our last-seen/age channels.
+
+Proposed input groups, pending agreement:
+
+- Current observed board, including empty versus unknown distinctions.
+- Per-square last-observed content (piece type/color or observed empty), never a guessed current board. Refresh whenever that square is visible. Never-observed squares remain separately identifiable as unknown.
+- Per-square age since observation, counted in plies, with a chosen bounded/log scaling and consistent game-start/never-seen handling. Age0 marks current observations; an explicit visibility plane is useful though partly redundant with current unknown encoding.
+- Explicit recent own completed moves, initially considering8 moves, newest first. Compact CNN encoding can use a from-square plane and a to-square plane for each move (16 planes for8 moves), with promotion/special-action metadata where the task requires it. Unlike the73-plane directional encoding in RBC, this factors origin and destination and is a proposed lightweight encoding, not a reproduction. Only earlier own moves are inputs; the move being predicted is the target and must never appear among its own input history.
+- Own color and known castling rights, which are already available to the protocol/tracker. Other known game metadata can be considered separately; do not infer unavailable opponent moves from hidden replay boards.
+
+Own move history is complementary: board/last-seen/age compress prior observations and can discard the path of actions that led there. Explicit actions may help recognize repeated maneuvers, plans, recent pawn moves and the consequences of revealing/moving pieces. In some situations actions are reconstructible from sufficiently rich observation histories, so improvement is a hypothesis, not guaranteed new information in every position. Last-seen+age is also not a full belief distribution: stale sightings on multiple squares need not be simultaneously true, and it does not encode correlations between hidden pieces.
+
+Recommended provisional representation: current + last-seen + age/visibility + recent own actions + small own-side metadata, rather than making a short stack of raw board views the whole history mechanism. Eight own moves is an initial design suggestion, not a literature-derived optimum. Need decide exact channels/history horizon and then prepare full-dataset server pretraining, followed by PPO/evaluation. No local training or server job was launched by this review.
+
+<a id="stage-49"></a>
+
+## 49. Boosted CNN: server pretraining infrastructure (2026-11-05; implemented, not launched)
+
+Supervised model experiment; the complete record is maintained in [EXPERIMENT_HISTORY.md, stage 49](EXPERIMENT_HISTORY.md#stage-49).
+
+
+<a id="stage-50"></a>
+
+## 50. Boosted CNN full historical pretraining: 50 epochs and readiness for PPO (2026-11-05; completed)
+
+Supervised model experiment; the complete record is maintained in [EXPERIMENT_HISTORY.md, stage 50](EXPERIMENT_HISTORY.md#stage-50).
+
+
+<a id="stage-51"></a>
+
+## 51. Boosted CNN PPO against a balanced frozen mixture (2026-11-05; launched)
+
+User authorized400 PPOupdates for the completed boosted imitation model against a half-full-CNN/half-residual mixture, with results/report afterward. Pipeline `work/run_boosted_ppo_400.py`; logs `logs/boosted-ppo-400-balanced.out/.err`; manifest/results `out/experiments/boosted-cnn-ppo-400-balanced-frozen-opponents/`. Canonical future policy: `out/rl/boosted-cnn-c32-h128-f4004a979d/policy.pt`. Source boosted-cnn-28018186 best epoch50. Frozen opponents: full latest2200 and residual embedded-best1200, preserving both original canonical files. Only boosted updates.
+
+The existing uniform opponent sampler would give50/50 in expectation. The run-specific driver instead uses the unchanged canonical training_steps/PPO/referee lifecycle and calls the existing collector for shuffled opponent/color-pairs, concatenating all Batch fields. This guarantees8games/opponent/update,4white/4black,6400games total/3200each. No game rules or observations are reimplemented. A mock collector check confirmed exact counts/colors and complete batch concatenation. No production RL implementation was changed.
+
+Recipe:400updates,16games/update,lambda1,gamma.99,temperature.9,actorLR1e-5,criticLR1e-3,Adam eps1e-5,4passes,minibatch128,ratio clip.2,value coefficient.5,entropy coefficient.01,globalclip.5,targetKL.02,256ply cap,seed7980,CPU1thread. Zero-initialize the imitation-unsupervised value head; freeze dropout/BN buffers using eval mode while training weights. Checkpoints atomically update the single canonical boosted RL file, embedding selected best. In-loop checkpoint selection evaluates20games/opponent every20updates (40games,total),seed9137. Before and after/latest+best benchmarks use50games/opponent (100games/policy),seed572940,balanced colors,with the same frozen RL incumbents; this is distinct from older benchmarks against supervised models.
+
+The pipeline records launch source/opponent/implementation hashes, skips already completed benchmarks, resumes update-boundary PPO after recoverable failures, and uses file locks to prevent duplicate writers. Completion analysis/report script `work/report_boosted_ppo_400.py` verifies finite tensors, identical source hashes,unchanged BN buffers,exact opponent/color counts and one canonical RL file; writes50-update-window metrics,plots via the canonical trainer,and measured stage52. Results pending; do not infer improvement from launch. No PSRO or unrequested model training is included.
+
+<a id="stage-52"></a>
+
+## 52. Completed boosted PPO400 against an exactly balanced frozen mixture (2026-11-05)
+
+Completed400 PPO **updates** (each up to4 minibatch passes),6400 fresh training games,3200 against each frozen opponent. Each update contains8 games/opponent,4 per color. Total learner decisions=202228; actual optimizer minibatch steps=7046. Best selected update=320; latest=400. Only boosted updates; full/residual actors stay frozen. Canonical file: `out/rl/boosted-cnn-c32-h128-f4004a979d/policy.pt`. Training wall time=0.744hours; total pipeline including benchmarks=0.761hours.
+
+### Recipe and opponent identity
+
+Actor starts from boosted imitation epoch50; the untrained value head is zero initialized, with no historical value warmup. Opponents are full CNN latest2200 and residual saved-best1200 exported as weights-only immutable evaluation/training snapshots. These are stronger RL incumbents, not the old supervised baselines. Thus absolute scores are not interchangeable with stages36–45 benchmarks against supervised actors. Adam actor LR1e-5,value-head LR1e-3,epsilon1e-5;4PPO passes,minibatch128,ratio clip.2,value coefficient.5,entropy coefficient.01,gradient clip.5,target KL.02,temperature.9,gamma.99,lambda1,256-ply cap,seed7980,CPU1thread. Dropout off/BNbuffers fixed for both collection and optimization; encoder and policy weights trainable. Outcomes win+1/loss−1/draw+.1; score=(W+.5D)/N. This is one training seed, not a controlled feature ablation or PSRO.
+
+### Independent before/after benchmark
+
+100games/policy,50/opponent,balanced colors,seed572940,temperature.9,max256plies. Same protocol before/after, separate from the40-game checkpoint selector (seed9137,every20updates). The pre-PPO actor has its value head zeroed, preserving actor predictions; arbitrary imitation value outputs are not treated as a trained critic. Repeated benchmark is not an untouched seed once examined.
+
+|Actor|Update|W/L/D|Score|Mean reward|
+|---|---:|---:|---:|---:|
+|Imitation starting actor|0|33/65/2|34.00%|-0.31800|
+|Latest PPO|400|50/43/7|53.50%|0.07700|
+|Selected PPO best|320|60/33/7|63.50%|0.27700|
+
+|Actor|Frozen opponent|W/L/D|Score|MC value RMSE|MC value EV|Mean plies|
+|---|---|---:|---:|---:|---:|---:|
+|Imitation|full-latest2200|17/31/2|36.00%|0.81726|0.00000|63.56|
+|Imitation|residual-best1200|16/34/0|32.00%|0.83529|0.00000|73.86|
+|Latest400|full-latest2200|26/19/5|57.00%|0.77522|0.00835|55.24|
+|Latest400|residual-best1200|24/24/2|50.00%|0.82737|0.02528|68.08|
+|Selected best|full-latest2200|35/12/3|73.00%|0.78822|0.06508|49.08|
+|Selected best|residual-best1200|25/21/4|54.00%|0.79266|0.01004|77.04|
+
+### On-policy learning and critic diagnostics
+
+MC RMSE is decision-weighted pooled squared error against full discounted outcomes; EV below is the mean of per-update EVs, not a pooled cross-update EV. Fresh means rollout predictions before fitting that batch. Same-batch after-update results are in analysis.json and must not be presented as held-out generalization. Lambda1 GAE targets equal discounted MC returns up to rounding.
+
+|Window|W/L/D|Score|Reward|Critic loss|Fresh MC RMSE|Fresh mean-update EV|Mean endpoint KL|Mean entropy|Gradient clipped|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|All400|3368/2748/284|54.84%|0.10131|0.31939|0.84798|0.00895|0.00672|1.46154|100.00%|
+|First10|59/89/12|40.62%|-0.18000|0.29568|0.80361|-0.00522|0.00602|1.74685|100.00%|
+|First50|341/431/28|44.38%|-0.10900|0.32138|0.84082|0.00322|0.00604|1.62064|100.00%|
+|Last50|467/279/54|61.75%|0.24175|0.30286|0.82971|0.00497|0.00709|1.16562|100.00%|
+
+Training outcomes by opponent:
+
+|Opponent|Games|W/L/D|Score|Mean reward|Mean plies|
+|---|---:|---:|---:|---:|---:|---:|
+|full-latest2200|3200|1791/1301/108|57.66%|0.15650|52.94|
+|residual-best1200|3200|1577/1447/176|52.03%|0.04612|73.56|
+
+Maximum endpoint KL=0.02859; KL early-stop updates=9; maximum pre-clipping global gradient=2535.15698. Mean PPO ratio-clipped fraction=3.10%; mean actor loss=-0.01583;mean total loss=0.12923. Termination reason totals: `{"King capturable": 6116, "Threefold repetition": 284}`. Games finish through the canonical referee; any protocol/bot failure aborts rather than becoming a training win.
+
+### Representation diagnostics and integrity
+
+Probe sampled from first training rollout and held fixed; this is not the imitation validation probe or held-out rollout set.
+
+|Layer|Initial zero fraction|Final zero fraction|Initial largest activity share|Final largest activity share|
+|---|---:|---:|---:|---:|
+|encoder.1|55.82%|55.14%|9.32%|8.68%|
+|encoder.2.2.relu2|95.45%|96.11%|78.11%|72.59%|
+|encoder.6|53.60%|38.68%|96.24%|90.99%|
+
+Finite latest/best tensors verified; original supervised source and both original full/residual canonical RL files match launch SHA256s. Frozen opponent snapshots also match. One canonical boosted RL model file with embedded best, no duplicate latest/best files. BN running buffers unchanged=True; actor/encoder state L2 change=0.512809. Initial source hash recorded in canonical training log matches launch source.
+
+### Measured takeaways and next recommendations
+
+Latest benchmark score changes by+19.50percentage points and selected-best benchmark by+29.50points versus the starting imitation actor. These are observed100-game changes, not proof of statistical significance or a history-specific PPO effect. No current-only model received a matched400-update PPO run, and no unchanged-training control was run. The best selector maximizes a different40-game sample, so selected-best need not win the100-game benchmark. No benchmark result automatically promotes or overwrites a checkpoint.
+
+The latest actor shows a substantial descriptive gain against the same frozen incumbents; verify it across additional seeds before committing a longer continuation. Fresh critic EV remains low in the last50updates; lower same-batch fitting error does not establish a useful generalizing critic. Interpret gradient clipping alongside actual KL, score and finite tensors; do not infer collapse from clipping frequency or activity concentration alone. Keep opponent mixture fixed for any immediate diagnostic continuation, preserve the independently evaluated incumbent, and defer PSRO until useful complementary play is established. No additional training beyond400 is authorized by this report.
+
+Artifacts: `out/experiments/boosted-cnn-ppo-400-balanced-frozen-opponents/{pipeline.json,analysis.json,before-ppo-benchmark.json,latest400-benchmark.json,selected-best-benchmark.json}`. Canonical metrics/plots in the boosted out/rl directory include rewards,outcomes,losses,value_quality,policy_health,throughput,training,evaluation_opponents; per-checkpoint activation/weight diagnostics in diagnostics/. Master logs: `logs/boosted-ppo-400-balanced.out/.err`. Analysis retains50-update windows, all selector evaluations, per-opponent results, source verification and features.
+
+### Review of completed results and specific next step
+
+The independent100-game benchmark improved from33W65L2D (34.0%) before PPO to50W43L7D (53.5%) at400 and60W33L7D (63.5%) for the saved-best actor at320. The saved-best scored73% versus full latest2200 (35W12L3D) and54% versus residual best1200 (25W21L4D). Latest400 scored57% and50%, respectively. This supports describing boosted as competitive with the tested established RL opponents after training. It does not establish universal superiority, nor isolate the contribution of history versus added parameters/pretraining.
+
+Training score rose44.375% in the first50updates to61.750% in the last50; mean reward−.109→+.24175. Fresh value RMSE barely moved (.84082→.82971), and fresh mean-update EV remained near zero (.00322→.00497). Thus actor improvement is much clearer than critic improvement; current history/last-seen inputs did not by themselves solve value prediction in this run. Critic loss.32138→.30286 and better same-batch post-fit RMSE are weaker evidence than transfer to subsequent fresh rollouts.
+
+Mean endpoint KL in the last50=.00709,mean entropy1.16562 versus1.62064 in the first50,ratio-clipped fraction about3.1%,with100%of optimizer steps globally clipped. No nonfinite checkpoint tensors were found. Those measurements support controlled probability changes and increasing policy concentration despite frequent clipping; they do not demonstrate a cured gradient/feature-scale problem. Dense largest-unit activity share fell96.24%→90.99% on the fixed rollout probe, while final-trunk zero fraction rose95.45%→96.11%; concentration remains substantial.
+
+The40-game selector chose320 at75% score; its separate100-game score is63.5%. The10-point best320/latest400 benchmark gap warrants further checking, but100games/candidate with different induced trajectories is insufficient to diagnose definite late regression. Recommended next action: repeat balanced benchmarks across several seeds and directly compare320 versus400, retaining320 as the provisional incumbent rather than promoting latest automatically. If those comparisons support continued learning, continue the same canonical boosted run from latest with the incumbent preserved and more reliable checkpoint comparisons; do not blindly extend based only on update count. A critic-focused controlled experiment can follow if fresh EV remains flat, without claiming the improving actor must wait for a strong critic. No extra training or additional arena games were launched by this review.
+
+Completed training took44.63minutes and the full pipeline45.66minutes. Exactly3200games/opponent,balanced colors,source/opponent hashes,finite tensors andunchanged BNbuffers were verified by the completion script. The monitor is paused after final delivery.
+
+<a id="stage-53"></a>
+
+## 53. Fresh-game value-head-only experiment on boosted (2026-11-05; launched)
+
+User authorized400steps of the proposed actor-frozen critic experiment,with results/report afterward. This means400value-fitting rounds,16fresh games/round (6400training games),not400actor updates. Latest boosted PPO400 actor is the fixed subject; saved-best320 is preserved. Same frozen full latest2200/residual best1200 snapshots as stage52,exact8games/opponent/round,4/color. Source canonical `out/rl/boosted-cnn-c32-h128-f4004a979d/policy.pt`; one canonical RL file remains. No original source/opponent files are updated.
+
+Freeze encoder,policy head and BN buffers; fit only existing linear+tanh value readout. Reuse current critic Adam moments/LR1e-3/eps1e-5,4passes over each fresh batch,minibatch128,head gradient clip.5,gamma.99,temperature.9,256ply cap. Actor's Adam state and root PPO RNG are preserved; fresh fitting uses an independent resumable phase RNG(seed684100). No policy loss,entropy bonus or actor update occurs. Bootstrap labels are complete-game discounted returns,not current critic estimates. Encoder features can be cached within each fresh batch because the encoder/eval buffers remain fixed.
+
+Collect128validation games(seed684101) and256untouched test games(seed684102),game-level balanced opponents/colors; independent game-instance split using separate RNG streams; natural repeated trajectories are counted and retained. Evaluate validation every20rounds,select minimum MSE including unchanged head round0,compare selected/latest head to unchanged critic and training-mean constant on the untouched test features. Paired whole-game bootstrap stratified by opponent,3000resamples,seed684103. The original phase,latest fitted head and selected head are small embedded states,not extra RL model files. Commit the validation-selected value head/matching optimizer for later continuation; PPO actor update count stays400.
+
+Driver `work/run_boosted_value_only_400.py`; report `work/report_boosted_value_only_400.py`; manifest/metrics under `out/experiments/boosted-value-head-only-400-fresh-games`; logs `logs/boosted-value-head-only-400.out/.err`; execsession46567. Driver locks the canonical file,checks actor/BN/saved-best hashes,checkpoints phase RNG/optimizer/metrics each round and resumes only this phase after recoverable errors. A small head-fitting smoke check verified16minibatch optimizer steps for4passes,head changes and bitwise frozen encoder/policy. Live results pending. Game scores should remain statistically unchanged because the actor is frozen; do not interpret sampling fluctuations as stronger play. No extra actor PPO,PSRO or independent encoder is launched.
+
+Stage53 setup correction before any optimizer step: an initial assertion incorrectly treated naturally identical sampled trajectories as reused held-out game instances. Independent seeded draws produced3distinct shared short trajectories between validation/test (7-ply games against fullCNN). The check was corrected to retain and count natural repeats rather than censor common games and alter the target distribution. Holdout draws remain excluded from fitting/selection as specified; test is not used for model selection. No actor or critic parameter changed during the aborted setup.
+
+<a id="stage-54"></a>
+
+## 54. Completed boosted value-head-only fitting:400 fresh-game rounds (2026-11-06)
+
+400 value-fitting rounds completed,6400 new training games,3200/opponent,4games/color/opponent/round. PPO actor update remains400; this is **not**400 additional actor/PPO updates. Only the linear+tanh value head was fitted,4passes/minibatch128 each round,Adam LR1e-3/eps1e-5,head-only clip.5. Latest400 actor/encoder/BN buffers stayed bitwise unchanged; saved-best320 actor/critic snapshot was untouched. The canonical PPO file retains the validation-selected head from round60 and matching optimizer state; original/latest/selected small value-head states and phase RNG/metrics are embedded for audit/resume. The400-round fitting phase does not advance PPO update numbering or change actor sampling weights. No historical data,PSRO or extra actor training was used.
+
+Game-level holdouts:128 validation games/4268positions and256 test games/8537positions,balanced by opponent/color. Dedicated collection seeds684101/684102; fresh fitting seed684100. Different RNG streams produce independent game draws. Identical trajectories can naturally recur, especially short games; these are retained to avoid conditioning evaluation on novelty/outcome. No held-out game instance enters optimization. Natural trajectory overlap counts are recorded in analysis.json, not falsely described as novel states. Validation measured every20rounds selects minimum MSE,including original round0 as a candidate. Test predictions were measured initially and after fitting,never used for updates/selection. Constant predictor is mean discounted return over all fresh training positions (0.139423),not the test mean. Both original and selected heads use the exact same test features/returns,so comparisons do not suffer from changed actor trajectories. Feature caching is valid because the encoder is frozen in eval mode.
+
+### Untouched test returns
+
+|Critic|Test RMSE|Test MAE|Test EV|Prediction mean|Prediction std|
+|---|---:|---:|---:|---:|---:|
+|Unchanged PPO400 critic|0.755710|0.691162|0.029089|0.118177|0.135366|
+|Latest value round400|0.774338|0.718183|-0.007911|-0.015496|0.124614|
+|Validation-selected head|0.763842|0.684606|0.024077|0.182290|0.196871|
+|Training-mean constant|0.768353|0.701469|0.000000|0.139423|0.000000|
+
+|Reference|Selected minus reference test MSE|Paired95%interval|
+|---|---:|---|
+|unchanged|0.012357|[-0.017992,0.042067]|
+|constant|-0.006912|[-0.031427,0.017239]|
+
+Bootstrap resamples256 whole test games3000times,stratified by frozen opponent. Negative difference favors fitted head. These intervals condition on one training run and one held-out sample,exclude training-seed uncertainty,and are not multiplicity-adjusted.
+
+|Frozen opponent|Unchanged test RMSE|Selected test RMSE|Constant test RMSE|
+|---|---:|---:|---:|
+|full-latest2200|0.738275|0.753681|0.748032|
+|residual-best1200|0.767712|0.770894|0.782303|
+
+### Fresh-stream fitting versus generalization
+
+|Window|Fresh pre-fit RMSE|Fresh mean-round EV|Same-batch post-fit RMSE|Value loss|Head clip fraction|Mean pre-clip L2|
+|---|---:|---:|---:|---:|---:|---:|
+|All400|0.793002|0.021518|0.741070|0.290110|97.63%|15.555574|
+|First50|0.777677|0.008006|0.728450|0.278517|97.03%|14.259687|
+|Last50|0.806650|0.003753|0.765735|0.303704|97.17%|15.662228|
+
+Total training positions=204073;actual optimizer minibatch steps=7164;maximum raw head gradient=144.298080;elapsed=35.34minutes. Fresh-stream summary RMSE pools squared errors by decision; EV is a mean of round EVs. Test EV is pooled on the fixed test set. Same-batch post-fit error is not held-out generalization. Fixed actor training scores/rewards fluctuate from sampling and are **not policy improvement**.
+
+### Findings and next recommendation
+
+The selected head does not establish a test-MSE improvement over the unchanged critic under the paired game-cluster interval. More fresh-game value-only fitting is therefore not yet demonstrated to solve the critic problem. Explained variance remains low even after head-only training,so a generalizing outcome predictor is still limited. A frozen shared representation constrains what a linear readout can learn; this experiment does not isolate representational limits from irreducible hidden-information/outcome noise or optimization/conditioning. No separate critic encoder was trained. Compare selected and unchanged critic initialization in a matched subsequent PPO experiment before attributing better actor learning to head fitting. If additional fitting is unsupported,avoid repeating400more rounds by default; a small independent-critic/nonlinear-readout diagnostic is more informative than enlarging the actor. No subsequent actor update or new experiment was launched by this report.
+
+Artifacts: `out/experiments/boosted-value-head-only-400-fresh-games/{pipeline.json,metrics.json,analysis.json,value-only-training.png,validation-features.pt,test-features.pt}`. Canonical boosted `policy.pt` retains one model file, original actor optimizer state/root PPO RNG and embedded best; phase metadata holds the fitted-head lifecycle separately. Original supervised/full/residual checkpoints and frozen opponents match launch hashes. Logs: `logs/boosted-value-head-only-400.out/.err`. Reproduction/analysis scripts in `work/run_boosted_value_only_400.py` and `work/report_boosted_value_only_400.py`.
+
+### Review: what the400rounds actually resolved
+
+The unchanged critic test RMSE=.755710/EV=.029089;validation-selected round60=.763842/.024077;latest400=.774338/−.007911;constant=.768353/0. The selected critic is numerically worse than the unchanged head against **both** opponents,though the paired test MSE difference+.012357 has95%CI[−.017992,+.042067],so a definite degradation is not established. Its advantage over a training-mean constant is also unresolved (MSE−.006912,95%CI[−.031427,+.017239]). This experiment supplies no clear held-out benefit from extra head-only fitting. The512-game critic diagnostic on older models and this fresh-stream boosted run differ in data refresh/model; their shared lack of clear gains should not be presented as identical replications.
+
+Validation-selected round60 improved validation RMSE only.755320→.751930. Later validation fluctuates substantially;at340 prediction mean=.786566 while fixed validation target mean=.133613,producingRMSE=.997079 withEV=.025821. The head is often adjusting the mean prediction rather than learning much more outcome discrimination. On test,initial mean bias=.041389 versus selected=.105502. Squared bias rises.001713→.011131,accounting for about76%of the selected head's.012357higher MSE;residual error variance also increases slightly. This is a calibration/conditioning warning,not proof that actor interference was the sole problem or that a separate encoder is required.
+
+With continually refreshed data and frozen actor,first50→last50 fresh pre-fit RMSE worsened.777677→.806650 andmean-round EV fell.008006→.003753. Same-batch post-fit errors are lower,but transfer is weak. Roughly97%of head optimizer steps clipped despite removing the actor entirely;the high inherited feature scale and retained1e-3head LR are plausible optimization factors. The experiment did not isolate LR,feature scaling,readout capacity,partial observability or outcome noise. It therefore rules out neither a better-conditioned head nor a separately trained critic.
+
+Recommendation:do not repeat another400head-only rounds with this unchanged recipe. Keep the original critic as the reference for future comparisons. The next small controlled diagnostic should address value-head conditioning (lower head LR or standardized frozen features),using the same train/validation/test protocol and guarding against test-driven selection;only then escalate to a nonlinear readout/independent critic if supported. A subsequent matched actor-PPO continuation would be needed to show that any fitted critic improves policy learning. No such additional run was launched.
+
+Storage state is explicit:canonical boosted actor remainslatest400;embedded best320 remainsunchanged;active value head is the predeclared validation-selected round60,with matching optimizer state. The initial value head and latest fitted head remain embedded in the phase metadata for recovery/control. There is no claim that the selected critic won the untouched test comparison,and no actor-strength promotion occurred. Source/opponent hashes and finite tensors passed;monitor paused after final delivery.
+
+<a id="stage-55"></a>
+
+## 55. Boosted outcome CNN: matched joint-pretraining infrastructure (2026-11-06; implemented, not launched)
+
+Supervised model experiment; the complete record is maintained in [EXPERIMENT_HISTORY.md, stage 55](EXPERIMENT_HISTORY.md#stage-55).
+
+
+<a id="stage-56"></a>
+
+## 56. Wide boosted outcome CNN setup (2026-11-06; implemented, not launched)
+
+Supervised model experiment; the complete record is maintained in [EXPERIMENT_HISTORY.md, stage 56](EXPERIMENT_HISTORY.md#stage-56).
+
+
+<a id="stage-57"></a>
+
+## 57. Wide outcome baseline reduced to64/256 (2026-11-06; setup revision, not launched)
+
+Supervised model experiment; the complete record is maintained in [EXPERIMENT_HISTORY.md, stage 57](EXPERIMENT_HISTORY.md#stage-57).
+
+<a id="stage-59"></a>
+
+## 59. Outcome-pretrained boosted: baseline100games then balanced PPO400 (2026-11-06; launched)
+
+User authorized100baseline games againstfullCNN/residualCNN,then400PPOupdates againsta50/50mixture,andreevaluation/metrics/takeawaysintheRLreport. Source:completedmediumoutcome-pretrainingselectedepoch43,out/experiments/boosted-outcome-cnn-28094904/best_policy.pt (supervisedresultsinEXPERIMENT_HISTORY.md#stage-58). Itsoutcome-supervisedvalueheadispreservedatPPOinitialization,andthepipelinecheckstensorsagainstsourcebeforefirsttrainingbatch. Separatecanonicalvariant:out/rl/boosted-outcome-cnn-c32-h128-4abf38ebb1/policy.pt. Ordinaryboosted'sPPO400/value-onlyphaseandfull/residualpoliciesareuntouched.
+
+Reusestage52balancedcollectorandcanonicaltraining_steps/PPO/referee:exact8games/opponent/update,4percolor,6400traininggames/3200each. FrozenfullCNNlatest2200andresidualsavedbest1200areexportedwithlaunchhashes;neitherupdates. Initialbenchmark100gamestotal(50/opponent),seed572940,temp.9,max256plies,gamma.99;latest400andsavedbestgetthesame100gamebenchmarkaftertraining. Thismatchesearlierordinaryboostedprotocol,nottheolderbenchmarksagainstsupervisedopponents. In-loopbestselectionuses20games/opponent,every20updates,seed9137;40gameselectornoisecanranklatest/bestdifferentlyfromthe100gamebenchmark.
+
+SamePPOrecipe:actorLR1e-5,valueheadLR1e-3,Adam eps1e-5,4passes,minibatch128,ratio clip.2,value coefficient.5,entropy coefficient.01,globalclip.5,targetKL.02,gamma.99,lambda1,16games/update,seed7980,CPU1thread. Eval-modekeepsdropoutoffandBNbuffersfixedwhileencoder/policy/valueweightsaretrainable. Historicaloutcometargetswereundiscountedandfromdifferentpolicies;freshvalueRMSE/EVmeasuretransfer,ratherthanassuminghistoricalEV.22willcarryover. Noextraheadwarmup,noPSRO,nochangeinactorarchitecture.
+
+Driverwork/run_boosted_outcome_ppo_400.py,execsession18725,logslogs/boosted-outcome-ppo-400-balanced.out/.err. Manifest/benchmarks/analysisunderout/experiments/boosted-outcome-cnn-ppo-400-balanced-frozen-opponents. Itskipscompletedbenchmarks,resumescanonicalupdateboundaries,usesfilelocks,andverifiessource/opponenthashes. Completionreportwork/report_boosted_outcome_ppo_400.pywritesmeasuredstage60,all/first10/first50/last50metrics,features,integritychecks,andcomparisonwithretainedordinaryboostedPPO400results. Cross-runcomparisonscombinechangesinencoder,policyandvaluepretraining;theyarenotanisolatedcritic-initializationablationandhaveonlyonetrainingseed. Noresultsareclaimedatlaunch.
+
+Stage59 baseline completed before the first PPO update:35wins,63losses,2draws in100games,score36.0%,mean reward−.278. AgainstfullCNNlatest2200:score32%;againstresidualbest1200:40%. Fresh discounted-return critic EV was−.04497/full and+.01469/residual,RMSE.82430/.83289. These are initial transfer measurements,not post-PPO results;historical validationEV.22 did not carry over directly to this opponent/policy distribution. Driver verification confirmed source value tensors were preserved exactly at update0. Training is active;interpretation waits for the completed400-update trajectory and post benchmarks.
+
+<a id="stage-60"></a>
+
+## 60. Completed outcome-pretrained boosted PPO400 against an exactly balanced frozen mixture (2026-11-06)
+
+Completed400 PPO **updates** (each up to4 minibatch passes),6400 fresh training games,3200 against each frozen opponent. Each update contains8 games/opponent,4 per color. Total learner decisions=216166; actual optimizer minibatch steps=7496. Best selected update=320; latest=400. Only boosted updates; full/residual actors stay frozen. Canonical file: `out/rl/boosted-outcome-cnn-c32-h128-4abf38ebb1/policy.pt`. Training wall time=0.792hours; total pipeline including benchmarks=1.198hours.
+
+### Recipe and opponent identity
+
+Actor starts from jointly outcome-supervised boosted imitation epoch43. The pretrained value head is preserved, not zero initialized; there is no extra head-only warmup. Historical pretraining targets are undiscounted outcomes, while PPO targets discounted current-policy returns. Opponents are full CNN latest2200 and residual saved-best1200 exported as weights-only immutable evaluation/training snapshots. These are stronger RL incumbents, not the old supervised baselines. Thus absolute scores are not interchangeable with stages36–45 benchmarks against supervised actors. Adam actor LR1e-5,value-head LR1e-3,epsilon1e-5;4PPO passes,minibatch128,ratio clip.2,value coefficient.5,entropy coefficient.01,gradient clip.5,target KL.02,temperature.9,gamma.99,lambda1,256-ply cap,seed7980,CPU1thread. Dropout off/BNbuffers fixed for both collection and optimization; encoder and policy weights trainable. Outcomes win+1/loss−1/draw+.1; score=(W+.5D)/N. This is one training seed, not a controlled feature ablation or PSRO.
+
+### Independent before/after benchmark
+
+100games/policy,50/opponent,balanced colors,seed572940,temperature.9,max256plies. Same protocol before/after, separate from the40-game checkpoint selector (seed9137,every20updates). The pre-PPO actor retains its learned historical outcome head. Its fresh-game value scores directly test transfer to discounted current-policy outcomes. Repeated benchmark is not an untouched seed once examined.
+
+|Actor|Update|W/L/D|Score|Mean reward|
+|---|---:|---:|---:|---:|
+|Imitation starting actor|0|35/63/2|36.00%|-0.27800|
+|Latest PPO|400|58/39/3|59.50%|0.19300|
+|Selected PPO best|320|68/29/3|69.50%|0.39300|
+
+|Actor|Frozen opponent|W/L/D|Score|MC value RMSE|MC value EV|Mean plies|
+|---|---|---:|---:|---:|---:|---:|
+|Imitation|full-latest2200|15/33/2|32.00%|0.82430|-0.04497|62.36|
+|Imitation|residual-best1200|20/30/0|40.00%|0.83289|0.01469|68.66|
+|Latest400|full-latest2200|28/21/1|57.00%|0.80498|0.12094|47.42|
+|Latest400|residual-best1200|30/18/2|62.00%|0.85519|0.17584|77.16|
+|Selected best|full-latest2200|34/14/2|70.00%|0.70840|0.10392|58.24|
+|Selected best|residual-best1200|34/15/1|69.00%|0.74211|0.05956|77.68|
+
+### On-policy learning and critic diagnostics
+
+MC RMSE is decision-weighted pooled squared error against full discounted outcomes; EV below is the mean of per-update EVs, not a pooled cross-update EV. Fresh means rollout predictions before fitting that batch. Same-batch after-update results are in analysis.json and must not be presented as held-out generalization. Lambda1 GAE targets equal discounted MC returns up to rounding.
+
+|Window|W/L/D|Score|Reward|Critic loss|Fresh MC RMSE|Fresh mean-update EV|Mean endpoint KL|Mean entropy|Gradient clipped|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|All400|3338/2692/370|55.05%|0.10672|0.28928|0.78484|0.05756|0.00555|1.47844|100.00%|
+|First10|56/101/3|35.94%|-0.27938|0.32809|0.83321|-0.01086|0.00507|1.79490|100.00%|
+|First50|340/429/31|44.44%|-0.10738|0.30484|0.81116|0.03102|0.00529|1.68078|100.00%|
+|Last50|469/295/36|60.88%|0.22200|0.28586|0.78268|0.06802|0.00552|1.37235|100.00%|
+
+Training outcomes by opponent:
+
+|Opponent|Games|W/L/D|Score|Mean reward|Mean plies|
+|---|---:|---:|---:|---:|---:|---:|
+|full-latest2200|3200|1673/1334/193|55.30%|0.11197|58.02|
+|residual-best1200|3200|1665/1358/177|54.80%|0.10147|77.19|
+
+Maximum endpoint KL=0.03401; KL early-stop updates=10; maximum pre-clipping global gradient=1734.71460. Mean PPO ratio-clipped fraction=2.86%; mean actor loss=-0.01130;mean total loss=0.11853. Termination reason totals: `{"King capturable": 6030, "Threefold repetition": 370}`. Games finish through the canonical referee; any protocol/bot failure aborts rather than becoming a training win.
+
+### Representation diagnostics and integrity
+
+Probe sampled from first training rollout and held fixed; this is not the imitation validation probe or held-out rollout set.
+
+|Layer|Initial zero fraction|Final zero fraction|Initial largest activity share|Final largest activity share|
+|---|---:|---:|---:|---:|
+|encoder.1|49.78%|49.62%|12.94%|12.62%|
+|encoder.2.2.relu2|96.50%|95.17%|54.63%|53.52%|
+|encoder.6|52.81%|46.54%|48.48%|40.41%|
+
+Finite latest/best tensors verified; original supervised source and both original full/residual canonical RL files match launch SHA256s. Frozen opponent snapshots also match. One canonical boosted RL model file with embedded best, no duplicate latest/best files. BN running buffers unchanged=True; actor/encoder state L2 change=0.583635. Initial source hash recorded in canonical training log matches launch source.
+
+### Comparison with the prior move-only boosted PPO experiment
+
+Both runs use the same frozen actor identities,100-game benchmark seed and400-update recipe. This compares joint-pretraining versus move-only starting models;it does not isolate value-head initialization from altered encoder/policy features. Outcomes within games are correlated and one training seed does not measure run-to-run variation.
+
+|Model|Before score|Latest400 score|Selected-best score|Last50 fresh MC EV|Last50 fresh MC RMSE|
+|---|---:|---:|---:|---:|---:|
+|Prior move-only boosted|34.00%|53.50%|63.50%|0.00497|0.82971|
+|Joint outcome-pretrained boosted|36.00%|59.50%|69.50%|0.06802|0.78268|
+
+### Measured takeaways and next recommendations
+
+Latest benchmark score changes by+23.50percentage points and selected-best benchmark by+33.50points versus the starting imitation actor. These are observed100-game changes, not proof of statistical significance or a history-specific PPO effect. The previous move-only boosted experiment used this same400-update recipe/opponent identities/seed but a different imitation-trained actor and initially zero critic. It is a single-seed training-objective comparison, not an isolated value-head-initialization control. No unchanged-training control was run. The best selector maximizes a different40-game sample, so selected-best need not win the100-game benchmark. No benchmark result automatically promotes or overwrites a checkpoint.
+
+The latest actor shows a substantial descriptive gain against the same frozen incumbents; verify it across additional seeds before committing a longer continuation. Fresh critic EV remains low in the last50updates; lower same-batch fitting error does not establish a useful generalizing critic. Interpret gradient clipping alongside actual KL, score and finite tensors; do not infer collapse from clipping frequency or activity concentration alone. Keep opponent mixture fixed for any immediate diagnostic continuation, preserve the independently evaluated incumbent, and defer PSRO until useful complementary play is established. No additional training beyond400 is authorized by this report.
+
+Artifacts: `out/experiments/boosted-outcome-cnn-ppo-400-balanced-frozen-opponents/{pipeline.json,analysis.json,before-ppo-benchmark.json,latest400-benchmark.json,selected-best-benchmark.json}`. Canonical metrics/plots in the boosted out/rl directory include rewards,outcomes,losses,value_quality,policy_health,throughput,training,evaluation_opponents; per-checkpoint activation/weight diagnostics in diagnostics/. Master logs: `logs/boosted-outcome-ppo-400-balanced.out/.err`. Analysis retains50-update windows, all selector evaluations, per-opponent results, source verification and features.
+
+### Review: critic transfer, calibration and practical next steps
+
+Joint outcome pretraining followed by PPO is a promising starting recipe here: benchmark latest/best scores are each six percentage points above the retained move-only boosted experiment, and last50 fresh-rollout mean EV is 0.06802 rather than 0.00497, with RMSE 0.78268 rather than 0.82971. These are descriptive comparisons between different actors and trajectories, not a matched critic dataset or an isolated initialization experiment. One training seed and100 benchmark games do not establish superiority.
+
+Historical undiscounted outcome EV around0.22 did not transfer immediately to current-policy discounted returns: first10 fresh-rollout EV was -0.01086. The critic subsequently acquired some useful signal, but calibration remains a concrete problem. In the latest400 residual-opponent benchmark, mean prediction was -0.25637 while mean discounted return was +0.23101, despite positive EV0.17584; RMSE was0.85519. At best320 the same opponent benchmark had mean prediction+0.33404 versus return+0.29505 and RMSE0.74211. EV ignores additive prediction bias, so report mean prediction/return and RMSE alongside EV. The best checkpoint's stronger actor and better calibration here do not prove a general late-training regression from a100-game comparison.
+
+Dense-layer activity concentration decreased from48.48% to40.41% for the largest feature, while the final residual trunk remains sparse and concentrated. Together with finite tensors, improving play and mean endpoint KL around0.0055, this argues against declaring a catastrophic collapse. Every measured training minibatch still required gradient clipping, and the largest pre-clipping norm was1734.71; clipping is containing large gradients rather than eliminating their cause. Do not increase the clipping threshold merely to reduce the reported clipping fraction.
+
+Treat embedded best320 as the provisional candidate for deployment/comparison, retaining latest400 for continuation. The next evidence-gathering step should be additional game seeds and direct matches of best320 versus latest400 and the retained move-only best actor, with balanced colors and uncertainty assessed at game level. That distinguishes checkpoint-selection noise from reproducible playing strength before another long continuation. When the wider supervised model is actually available, benchmark it using the same opponent suite before deciding whether extra capacity merits PPO. PSRO can later address opponent coverage; it does not by itself fix critic calibration. These are recommendations only: this experiment stopped at400 and no extra matches or training were started.
+
+<a id="stage-61"></a>
+
+## 61. Authorized outcome-boosted fixed-opponent continuation: updates401–800 (2026-11-06; launched)
+
+Continue canonical medium outcome boosted latest400, preserving optimizer and RNG state, to800 total updates:400 additional updates/6400 fresh games. Same immutable full latest2200/residual embedded-best1200 opponents, exact8games/opponent/update and4/color. Same recipe as stage60:gamma.99,lambda1,actorLR1e-5,criticLR1e-3,Adam eps1e-5,4passes,minibatch128,clipratio.2,gradclip.5,targetKL.02,temperature.9,max256plies,seed7980,CPU1thread. Resume-parser check confirmed all prior recipe settings unchanged. No boosted actors added as opponents, no PSRO, no wide training or extra value warmup.
+
+Prior stage60 metrics/benchmarks remain untouched; update400 complete metrics and prior analysis are copied into out/experiments/boosted-outcome-cnn-ppo-updates401-800-balanced-frozen-opponents. Before-continuation benchmark reuses the completed latest400 result(59.5%); previous best320 result(69.5%) remains the incumbent comparison. At800 evaluate latest and embedded best using100games each,50/opponent,seed572940,then compare preceding50/first10/first50/last50/all400 update metrics and features. Preserve original source/opponent hashes and best state through canonical checkpointing. Report script will append measured stage62; interpretation and recommendations require post-completion review. This is an additional-training experiment, not an isolated algorithm change; no claim of improvement before results.
+
+Driver work/run_boosted_outcome_ppo_800.py; report work/report_boosted_outcome_ppo_800.py. Logs logs/boosted-outcome-ppo-401-800-balanced.out/.err. Canonical learner out/rl/boosted-outcome-cnn-c32-h128-4abf38ebb1/policy.pt.

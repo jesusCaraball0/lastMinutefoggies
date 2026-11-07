@@ -308,6 +308,18 @@ def plot_diagnostics(history, histograms, output, *, x_key="epoch", x_label="Epo
     ax.legend()
     save(fig, output / 'loss.png')
 
+    if history[0]['train'].get('outcome') is not None:
+        fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+        for split in ('train', 'validation'):
+            rows = [r[split] for r in history]
+            axes[0, 0].plot(epochs, [r['total_loss'] for r in rows], label=split)
+            for ax, key in zip(list(axes.flat)[1:], ['mse', 'rmse', 'mae', 'explained_variance', 'win_loss_accuracy']):
+                ax.plot(epochs, [r['outcome'][key] for r in rows], label=split)
+        axes[0, 1].plot(epochs, [r['validation']['outcome']['training_mean_constant_mse'] for r in history], ls='--', label='Training-mean constant on validation')
+        for ax, title in zip(axes.flat, ['Joint loss (CE + half MSE)', 'Outcome MSE', 'Outcome RMSE', 'Outcome MAE', 'Outcome explained variance', 'Win/loss accuracy (draws excluded)']):
+            ax.set(title=title, xlabel=x_label);ax.legend();ax.grid(alpha=.2)
+        save(fig, output / 'outcome_training.png')
+
     fig, ax = plt.subplots(figsize=(8, 4))
     lr_trace = [rates for row in history for rates in row['train'].get('learning_rates_by_step', [])]
     for group in range(len(history[0]['learning_rates'])):

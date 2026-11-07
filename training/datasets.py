@@ -9,6 +9,7 @@ from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from tqdm import tqdm
+from starters.shared.observation_history import ObservationHistory
 
 
 SYMBOLS = "PNBRQKpnbrqk?-"
@@ -46,22 +47,38 @@ def replay_examples(replay):
 
 
 def observation_planes(tokens, device):
+    from starters.shared.boosted_features import TOKEN_COUNT, boosted_planes
+    if tokens.shape[-1] == TOKEN_COUNT:
+        return boosted_planes(tokens, device)
     tokens = tokens.to(device=device, dtype=torch.long)
-    # Preserve any leading batch/time dimensions; the last dimension is squares.
-    return nn.functional.one_hot(tokens, len(SYMBOLS)).transpose(-1, -2).reshape(
-        *tokens.shape[:-1], 14, 8, 8).float()
+    if tokens.shape[-1] < 64 or tokens.shape[-1] % 64:
+        raise ValueError('Tokens must contain complete 64-square observation frames')
+    frames = tokens.shape[-1] // 64
+    shaped = tokens.reshape(*tokens.shape[:-1], frames, 64)
+    return nn.functional.one_hot(shaped, len(SYMBOLS)).transpose(-1, -2).reshape(
+        *tokens.shape[:-1], 14 * frames, 8, 8).float()
+
+
+def history_examples(replay, frames):
+    examples = list(replay_examples(replay))
+    histories = [ObservationHistory(frames), ObservationHistory(frames)]
+    for before, (_, target) in zip(replay['frames'], examples):
+        histories[0].observe(before['white'])
+        histories[1].observe(before['black'])
+        side = before['ply'] % 2
+        yield [TOKEN[c] for c in histories[side].encoded_view()], target
 
 
 class ReplayDataset(Dataset):
     """Store 64 uint8 tokens per position; expand to planes only per batch."""
 
-    def __init__(self, paths):
+    def __init__(self, paths, history_frames=1):
         observations, targets = [], []
         self.games = 0
         for path in tqdm(paths, desc="Read replays", unit="game"):
             try:
                 replay = json.loads(path.read_text(encoding="utf-8"))
-                examples = list(replay_examples(replay))
+                examples = list(history_examples(replay, history_frames)) if history_frames > 1 else list(replay_examples(replay))
             except (ValueError, KeyError, TypeError) as error:
                 raise ValueError(f"Bad replay {path}: {error}") from error
             if examples:

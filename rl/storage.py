@@ -17,9 +17,20 @@ def variant_name(saved):
         raise ValueError('Recurrent policies are excluded from PPO training')
     defaults={name:p.default for name,p in inspect.signature(Policy).parameters.items()}
     defaults.update(saved.get('model_config',{}))
+    # Preserve canonical identities of all pre-history architectures.
+    if defaults.get('history_frames') == 1:
+        defaults.pop('history_frames')
+    if not defaults.get('outcome_supervision'):
+        defaults.pop('outcome_supervision', None)
+    if not defaults.get('boosted'):
+        defaults.pop('boosted', None)
     defaults.update(activation=saved.get('activation','relu'),negative_slope=saved.get('negative_slope',.01))
     digest=hashlib.sha256(json.dumps(defaults,sort_keys=True).encode()).hexdigest()[:10]
     family='residual' if defaults['residual_blocks'] else 'cnn'
+    if defaults.get('boosted'):
+        family = 'boosted-outcome-cnn' if defaults.get('outcome_supervision') else 'boosted-cnn'
+    if defaults.get('history_frames', 1) > 1:
+        family = 'history' + str(defaults['history_frames']) + '-' + family
     return f"{family}-c{defaults['channels']}-h{defaults['hidden_size']}-{digest}"
 
 

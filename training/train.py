@@ -66,6 +66,10 @@ def run_epoch(model, loader, device, description, optimizer=None, scheduler=None
     gradients = GradientNorms(model) if training else None
     updates = UpdateRatios(model, UPDATE_SAMPLE_EVERY) if training else None
     learning_rates_by_step = []
+    from training.outcomes import OutcomeMetrics
+    outcome_meter = OutcomeMetrics()
+    joint_sum = 0.
+    outcome_enabled = getattr(model, "outcome_supervision", False)
     loss_sum = correct = top5 = count = 0
     with torch.set_grad_enabled(training):
         progress = tqdm(loader, desc=description, unit="batch")
@@ -73,14 +77,28 @@ def run_epoch(model, loader, device, description, optimizer=None, scheduler=None
             hidden = None  # New batch = new games; never share player memories.
             for start in range(0, tokens.shape[1], chunk_length):
                 planes = observation_planes(tokens[:, start:start + chunk_length], device)
-                labels = targets[:, start:start + chunk_length].to(device)
+                move_targets = targets["moves"] if outcome_enabled else targets
+                labels = move_targets[:, start:start + chunk_length].to(device)
                 if training:
                     optimizer.zero_grad(set_to_none=True)
-                logits, hidden = model.forward_chunk(planes, hidden)
+                if outcome_enabled:
+                    logits, outcome_prediction, hidden = model.forward_chunk_with_value(planes, hidden)
+                else:
+                    logits, hidden = model.forward_chunk(planes, hidden)
                 valid = labels != -100  # Opponent turns and padding have no loss.
                 scores, labels = logits[valid], labels[valid]
                 if labels.numel():
-                    loss = nn.functional.cross_entropy(scores, labels)
+                    move_loss = nn.functional.cross_entropy(scores, labels)
+                    loss = move_loss
+                    if outcome_enabled:
+                        value_labels = targets['outcome'][:, start:start + chunk_length].to(device)
+                        value_valid = targets['outcome_valid'][:, start:start + chunk_length].to(device) & valid
+                        if value_valid.any():
+                            predictions, values = outcome_prediction[value_valid], value_labels[value_valid]
+                            loss = loss + .5 * nn.functional.mse_loss(predictions, values)
+                            outcome_meter.add(predictions, values)
+                    if not torch.isfinite(loss):
+                        raise FloatingPointError('Nonfinite training loss')
                     if training:
                         loss.backward()
                         gradients.record("pre_clip")
@@ -98,7 +116,8 @@ def run_epoch(model, loader, device, description, optimizer=None, scheduler=None
                             scheduler.step()
                         updates.record()
                     count += labels.numel()
-                    loss_sum += loss.item() * labels.numel()
+                    loss_sum += move_loss.item() * labels.numel()
+                    joint_sum += loss.item() * labels.numel()
                     correct += (scores.argmax(1) == labels).sum().item()
                     top5 += (scores.topk(5, dim=1).indices == labels[:, None]).any(1).sum().item()
                     progress.set_postfix(loss=f"{loss_sum / count:.4f}", refresh=False)
@@ -108,6 +127,8 @@ def run_epoch(model, loader, device, description, optimizer=None, scheduler=None
         raise ValueError("Epoch contained no labeled moves")
     metrics = {"loss": loss_sum / count, "top1": correct / count, "top5": top5 / count,
                "positions": count}
+    if outcome_enabled:
+        metrics.update(total_loss=joint_sum / count, outcome=outcome_meter.report())
     if gradients is not None:
         metrics["gradient_l2"] = gradients.summary()
         metrics["gradient_global_l2"] = gradients.global_summary()
@@ -149,13 +170,14 @@ def parse_args(argv=None):
                     device=DEVICE, data_dir=DATA_DIR, out_dir=OUT_DIR, output=OUTPUT,
                     train_game_limit=TRAIN_GAME_LIMIT, validation_game_limit=VALIDATION_GAME_LIMIT,
                     probe_max_positions=PROBE_MAX_POSITIONS, threads=None,
-                    residual_blocks=0, dropout=0., selection_metric='loss')
+                    residual_blocks=0, dropout=0., history_frames=1, selection_metric='loss',
+                    split_manifest=None, boosted=False, boosted_outcome=False)
     parser = argparse.ArgumentParser(description=__doc__, argument_default=argparse.SUPPRESS)
     for key in defaults:
         flag = '--' + key.replace('_', '-')
-        if key == 'batch_norm':
+        if key in ('batch_norm', 'boosted', 'boosted_outcome'):
             parser.add_argument(flag, action=argparse.BooleanOptionalAction)
-        elif key in ('data_dir', 'out_dir', 'output'):
+        elif key in ('data_dir', 'out_dir', 'output', 'split_manifest'):
             parser.add_argument(flag, type=Path)
         elif key in ('model_type', 'activation', 'schedule', 'device', 'selection_metric'):
             choices = {'model_type': ['feedforward', 'recurrent'], 'activation': ['relu', 'leaky_relu'],
@@ -180,12 +202,12 @@ def parse_args(argv=None):
     defaults.update(provided)
     defaults.setdefault('resume', None)
     defaults.setdefault('run_dir', None)
-    for key in ('data_dir', 'out_dir', 'output', 'run_dir', 'resume'):
+    for key in ('data_dir', 'out_dir', 'output', 'run_dir', 'resume', 'split_manifest'):
         if defaults[key] is not None:
             defaults[key] = Path(defaults[key])
     args = argparse.Namespace(**defaults)
     if min(args.epochs, args.channels, args.hidden_size, args.batch_size,
-           args.sequence_batch_size, args.sequence_length) < 1:
+           args.sequence_batch_size, args.sequence_length, args.history_frames) < 1:
         parser.error('Epoch, batch, and model sizes must be positive')
     for key in ('train_game_limit', 'validation_game_limit', 'threads'):
         if getattr(args, key) is not None and getattr(args, key) < 1:
@@ -204,6 +226,10 @@ def parse_args(argv=None):
         parser.error('Warmup requires a nonnegative count and start LR <= peak LR')
     if args.residual_blocks < 0 or not 0 <= args.dropout < 1:
         parser.error('Residual blocks must be nonnegative; dropout must be in [0, 1)')
+    if args.boosted_outcome:
+        args.boosted = True
+    if args.boosted and (args.model_type != 'feedforward' or args.history_frames != 1):
+        parser.error('Boosted CNN requires feedforward model type and no raw frame stacking')
     return args
 
 
@@ -230,6 +256,12 @@ def main(argv=None):
     if device.type == 'cuda' and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable; use a GPU allocation and CUDA-enabled PyTorch')
     model_config = dict(channels=args.channels, hidden_size=args.hidden_size, batch_norm=args.batch_norm)
+    if args.boosted:
+        model_config['boosted'] = True
+    if args.boosted_outcome:
+        model_config['outcome_supervision'] = True
+    if args.history_frames != 1:
+        model_config['history_frames'] = args.history_frames
     if args.residual_blocks or args.dropout:
         model_config.update(residual_blocks=args.residual_blocks, dropout=args.dropout)
     model = create_policy(args.model_type, args.activation, args.negative_slope, **model_config).to(device)
@@ -244,15 +276,23 @@ def main(argv=None):
         run_dir = args.run_dir or unused_run_path(args.out_dir, f'train-c{args.channels}-h{args.hidden_size}-res{args.residual_blocks}-{args.epochs}epochs-{args.model_type}')
         if run_dir.exists():
             raise FileExistsError(f'{run_dir} already exists; use --resume or a fresh --run-dir')
-        train_paths, validation_paths = split_games(args.data_dir.glob('*.json'), args.validation_fraction, args.seed)
+        if args.split_manifest:
+            split = json.loads(args.split_manifest.read_text())
+            train_paths, validation_paths = ([Path(p) for p in split[key]] for key in ('train', 'validation'))
+            if set(p.resolve() for p in train_paths) & set(p.resolve() for p in validation_paths):
+                raise ValueError('Split manifest shares games between training and validation')
+        else:
+            train_paths, validation_paths = split_games(args.data_dir.glob('*.json'), args.validation_fraction, args.seed)
         train_paths = train_paths[:args.train_game_limit]
         validation_paths = validation_paths[:args.validation_game_limit]
     loader_options = dict(batch_size=args.batch_size, sequence_batch_size=args.sequence_batch_size, seed=args.seed)
     train_loader = model.make_loader(train_paths, shuffle=True, **loader_options)
     validation_loader = model.make_loader(validation_paths, **loader_options)
     train_data, validation_data = train_loader.dataset, validation_loader.dataset
+    if args.boosted_outcome and min(train_data.outcome_positions, validation_data.outcome_positions) == 0:
+        raise ValueError('Joint pretraining requires eligible outcome labels in both splits')
     probe_limit = args.probe_max_positions or validation_data.positions
-    probes = PolicyProbes(validation_paths, probe_limit)
+    probes = PolicyProbes(validation_paths, probe_limit, history_frames=args.history_frames, boosted=args.boosted)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate,
                                  betas=(args.beta_1, args.beta_2), eps=args.epsilon,
                                  weight_decay=args.weight_decay)
@@ -291,6 +331,19 @@ def main(argv=None):
                   histogram_max_observations=HISTOGRAM_MAX_OBSERVATIONS,
                   histogram_max_values_per_layer=HISTOGRAM_MAX_VALUES_PER_LAYER,
                   histogram_bins=HISTOGRAM_BINS)
+    if args.boosted:
+        config['input_representation'] = dict(
+            schema='boosted_v1', history_own_turns=20, input_channels=model.input_channels,
+            record='current observation14 + prior own move73 + own/opponent capture squares2 + color1',
+            context='own castling2 + last-seen14 + age1 + ever-seen1 + visibility1',
+            age='plies since visible, capped254 and divided254; never-seen distinguished explicitly',
+            compact_cache_row_bytes=203, cache=str(train_data.directory),
+            target_leakage='target own move recorded only after its input has been emitted')
+    if args.boosted_outcome:
+        config['training_objectives'] = dict(loss='move_cross_entropy + 0.5 * outcome_MSE',
+            outcome_targets='own-side terminal win+1/loss-1/draw+0.1, undiscounted; labels only, no hidden inputs',
+            train=train_data.outcome_metadata, validation=validation_data.outcome_metadata,
+            selection='unchanged legal top1 policy accuracy')
     if saved:
         model.load_state_dict(saved['state_dict'])
         optimizer.load_state_dict(saved['optimizer_state_dict'])
@@ -317,6 +370,10 @@ def main(argv=None):
     metrics_path = run_dir / 'metrics.json'
     write_json(metrics_path, log)
     print(f'Device: {device}; model: {args.model_type}; BatchNorm: {args.batch_norm}', flush=True)
+    if args.boosted:
+        print(f'Variant: {"boosted_outcome_cnn" if args.boosted_outcome else "boosted_cnn"}; inputs: {model.input_channels:,} channels; '
+              f'parameters: {sum(p.numel() for p in model.parameters()):,}; '
+              f'20 own-turn records + last-seen/age; cache: {train_data.directory}', flush=True)
     print(f'Train: {train_data.games:,} games / {train_data.positions:,} moves; validation: '
           f'{validation_data.games:,} games / {validation_data.positions:,} moves', flush=True)
     print(f'AdamW: betas={optimizer.param_groups[0]["betas"]}, eps={args.epsilon}, decay={args.weight_decay}; '
@@ -329,6 +386,8 @@ def main(argv=None):
     print(f'Diagnostics: {run_dir}; legal probe: {probes.positions:,} held-out moves', flush=True)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.boosted_outcome:
+        print('Objectives: move CE + 0.5 * own-side outcome MSE; both update the encoder; no hidden-board inputs', flush=True)
     activation_report = None
     for epoch in range(first_epoch, args.epochs + 1):
         learning_rates = [group['lr'] for group in optimizer.param_groups]
@@ -365,9 +424,14 @@ def main(argv=None):
             log.update(best_epoch=epoch, best_selection_score=score,
                        selection_metric=args.selection_metric,
                        best_selection_value=-score if args.selection_metric == 'loss' else score)
+        if args.boosted_outcome:
+            for measurements in (train_metrics, validation_metrics):
+                outcome = measurements['outcome']
+                mean = train_data.outcome_metadata['target_mean']
+                outcome['training_mean_constant_mse'] = outcome['target_std']**2 + (outcome['target_mean']-mean)**2
         # Checkpoints resume at epoch boundaries, including shuffle and optimizer state.
         checkpoint = dict(kind=args.model_type, activation=args.activation, negative_slope=args.negative_slope,
-                          model_config=model_config,
+                          model_config=model_config, value_pretrained=bool(args.boosted_outcome),
                           state_dict={k: v.detach().cpu() for k, v in model.state_dict().items()},
                           optimizer_state_dict=optimizer.state_dict(),
                           scheduler_state_dict=scheduler.state_dict() if scheduler else None,
@@ -387,6 +451,10 @@ def main(argv=None):
         print(f'Epoch {epoch}/{args.epochs} | train {train_metrics["loss"]:.4f} | '
               f'val {validation_metrics["loss"]:.4f}, top1 {validation_metrics["top1"]:.2%} | '
               f'clipped {train_metrics["gradient_global_l2"]["clipped_fraction"]:.2%}', flush=True)
+        if args.boosted_outcome:
+            ev = validation_metrics['outcome']['explained_variance']
+            ev_text = f'{ev:.4f}' if ev is not None else 'undefined (constant targets)'
+            print(f"  Outcome train RMSE {train_metrics['outcome']['rmse']:.4f} | val RMSE {validation_metrics['outcome']['rmse']:.4f}, EV {ev_text}", flush=True)
     if activation_report is None:
         checkpoint = saved
         activation_report = final_histograms(model, validation_loader, device, bins=HISTOGRAM_BINS,

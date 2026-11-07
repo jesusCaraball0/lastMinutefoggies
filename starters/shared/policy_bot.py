@@ -5,7 +5,7 @@ import math
 import chess
 import torch
 
-from model import create_policy, encode
+from model import create_policy, encode, ObservationHistory, BoostedHistory, boosted_planes
 from moves import OBSERVATION_CHARACTERS, ObservationTracker
 
 TEMPERATURE = 0.9
@@ -35,14 +35,21 @@ def main(checkpoint):
     torch.set_num_threads(1)
     model = load_policy(checkpoint)
     tracker = ObservationTracker(color == "w")
+    history = ObservationHistory(getattr(model, 'history_frames', 1))
+    boosted_history = BoostedHistory(color == 'w') if getattr(model, 'boosted', False) else None
+    observation_ply = 0
     hidden = logits = None
     with torch.inference_mode():
-        model(torch.zeros(1, 14, 8, 8))
+        model(torch.zeros(1, getattr(model, 'input_channels', 14), 8, 8))
         print("ready", flush=True)
         for raw in sys.stdin:
             line = raw.strip()
             if len(line) == 64 and set(line) <= OBSERVATION_CHARACTERS:
                 tracker.observe(line)
+                history.observe(line)
+                if boosted_history is not None:
+                    boosted_history.observe(line, observation_ply)
+                observation_ply += 1
                 if model.recurrent:
                     logits, hidden = model(encode(line).unsqueeze(0), hidden)
                 continue
@@ -53,10 +60,16 @@ def main(checkpoint):
             # The training target merges promotion types; prefer queen promotion.
             moves = [move for move in moves if move.promotion in (None, chess.QUEEN)]
             if not model.recurrent:
-                logits, _, _ = model(encode(tracker.current).unsqueeze(0))
+                if boosted_history is not None:
+                    tokens = torch.tensor([boosted_history.encoded_tokens(tracker.rights)], dtype=torch.uint8)
+                    logits, _, _ = model(boosted_planes(tokens))
+                else:
+                    logits, _, _ = model(encode(history.encoded_view()).unsqueeze(0))
             indices = [move.from_square * 64 + move.to_square for move in moves]
             # Normalize only legal candidates; each new process gets fresh RNG state.
             probabilities = torch.softmax(logits[0, indices] / model.temperature, dim=0)
             move = moves[torch.multinomial(probabilities, num_samples=1).item()]
+            if boosted_history is not None:
+                boosted_history.record_move(move)
             tracker.record_move(move)
             print("move " + move.uci(), flush=True)

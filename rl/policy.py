@@ -9,6 +9,8 @@ from torch.distributions import Categorical
 from referee import BotFailure
 from starters.shared.model import create_policy
 from starters.shared.moves import ObservationTracker
+from starters.shared.observation_history import ObservationHistory
+from starters.shared.boosted_features import BoostedHistory
 from training.datasets import TOKEN, observation_planes
 
 
@@ -35,6 +37,8 @@ def masked_distribution(logits, masks, temperature):
 def initialize_value(model, saved):
     if saved.get('algorithm') == 'ppo':
         return 'preserved trained PPO critic'
+    if saved.get('value_pretrained'):
+        return 'preserved outcome-supervised imitation value head; PPO adapts historical undiscounted outcomes to current-policy discounted returns'
     torch.nn.init.zeros_(model.value.weight)
     torch.nn.init.zeros_(model.value.bias)
     return 'zero initialized; imitation did not supervise this head'
@@ -64,6 +68,8 @@ class PolicyAgent:
 
     def reset(self, side, base, increment):
         self.tracker = ObservationTracker(side)
+        self.history = ObservationHistory(getattr(self.model, 'history_frames', 1))
+        self.boosted_history = BoostedHistory(side) if getattr(self.model, 'boosted', False) else None
         self.hidden = self.logits = None
         self.transitions = []
         # eval() keeps dropout off and BN running statistics fixed, even when
@@ -72,6 +78,9 @@ class PolicyAgent:
 
     def observe(self, view, ply):
         self.tracker.observe(view)
+        self.history.observe(view)
+        if self.boosted_history is not None:
+            self.boosted_history.observe(view, ply)
         if hasattr(self.model, 'memory'):
             with torch.no_grad():
                 tokens = torch.tensor([[TOKEN[s] for s in view]], dtype=torch.uint8)
@@ -82,7 +91,9 @@ class PolicyAgent:
                  if move.promotion in (None, chess.QUEEN)]
         if not moves:
             raise BotFailure('No observation-based move candidates')
-        tokens = torch.tensor([TOKEN[s] for s in self.tracker.current], dtype=torch.uint8)
+        encoded = (self.boosted_history.encoded_tokens(self.tracker.rights) if self.boosted_history is not None
+                   else [TOKEN[s] for s in self.history.encoded_view()])
+        tokens = torch.tensor(encoded, dtype=torch.uint8)
         mask = torch.zeros(4096, dtype=torch.bool)
         by_action = {m.from_square*64+m.to_square: m for m in moves}
         mask[list(by_action)] = True
@@ -98,6 +109,8 @@ class PolicyAgent:
                 self.transitions.append(Transition(tokens, mask, int(action),
                                                     float(distribution.log_prob(action)), value))
         move = by_action[int(action)]
+        if self.boosted_history is not None:
+            self.boosted_history.record_move(move)
         self.tracker.record_move(move)
         return move.uci()
 

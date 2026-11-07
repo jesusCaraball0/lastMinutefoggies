@@ -11,6 +11,8 @@ import torch.nn.functional as F
 
 from starters.shared.moves import ObservationTracker, candidates, king_safe_moves
 from training.datasets import TOKEN, observation_planes, replay_examples
+from starters.shared.observation_history import ObservationHistory
+from starters.shared.boosted_features import BoostedHistory
 from training.diagnostics import norm_statistics
 
 
@@ -58,7 +60,7 @@ class UpdateRatios:
 class PolicyProbes:
     """Precompute legal/safety masks once, keeping full history for selected moves."""
 
-    def __init__(self, paths, max_positions=256):
+    def __init__(self, paths, max_positions=256, history_frames=1, boosted=False):
         if max_positions < 1:
             raise ValueError('Policy probe position limit must be positive')
         self.trajectories = []
@@ -73,11 +75,17 @@ class PolicyProbes:
             frames = replay['frames'][:-1]
             for side, color in ((True, 'white'), (False, 'black')):
                 tracker = ObservationTracker(side)
+                history = BoostedHistory(side) if boosted else ObservationHistory(history_frames)
                 tokens, targets, masks = [], [], {}
                 for i, frame in enumerate(frames):
                     view = frame[color]
                     tracker.observe(view)
-                    tokens.append([TOKEN[c] for c in view])
+                    if boosted:
+                        history.observe(view, frame['ply'])
+                        tokens.append(history.encoded_tokens(tracker.rights))
+                    else:
+                        history.observe(view)
+                        tokens.append([TOKEN[c] for c in history.encoded_view()])
                     own_turn = (frame['ply'] % 2 == 0) == side
                     targets.append(examples[i][1] if own_turn else -100)
                     if own_turn:
@@ -91,6 +99,8 @@ class PolicyProbes:
                             raise ValueError(f'Probe target outside legal mask: {path}, ply {frame["ply"]}')
                         masks[i] = (legal_ids, safe_ids)
                         tracker.record_move(chess.Move.from_uci(replay['frames'][i + 1]['move']))
+                        if boosted:
+                            history.record_move(replay['frames'][i + 1]['move'])
                         self.positions += 1
                     if self.positions >= max_positions:
                         break

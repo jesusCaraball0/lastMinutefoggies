@@ -5,6 +5,12 @@ logits and optional memory; clip_gradients applies the policy's training rule.
 """
 import torch
 from torch import nn
+try:
+    from .observation_history import ObservationHistory
+    from .boosted_features import BoostedHistory, boosted_planes, CHANNELS as BOOSTED_CHANNELS
+except ImportError:  # Standalone arena bot imports model directly.
+    from observation_history import ObservationHistory
+    from boosted_features import BoostedHistory, boosted_planes, CHANNELS as BOOSTED_CHANNELS
 
 
 class ResidualBlock(nn.Module):
@@ -24,7 +30,8 @@ class ResidualBlock(nn.Module):
 
 
 def make_encoder(activation="relu", negative_slope=0.01, channels=64, hidden_size=256, batch_norm=False,
-                 batch_norm_affine=True, dense_batch_norm=False, dropout=0., residual_blocks=0, head_channels=None):
+                 batch_norm_affine=True, dense_batch_norm=False, dropout=0., residual_blocks=0, head_channels=None,
+                 input_channels=14, match_current_initialization=True):
     """Keep layer indices/weight shapes stable for historical checkpoints."""
     def nonlinearity():
         if activation == "relu":
@@ -37,6 +44,16 @@ def make_encoder(activation="relu", negative_slope=0.01, channels=64, hidden_siz
     layers = [nn.Conv2d(14, channels, 3, padding=1), nonlinearity(),
               nn.Conv2d(channels, channels, 3, padding=1), nonlinearity(),
               nn.Flatten(), nn.Linear(channels * 64, hidden_size), nonlinearity()]
+    if input_channels != 14:
+        # The old frame-stack pilot preserves its matched-control initialization.
+        # Boosted inputs use ordinary Conv2d initialization over all input planes.
+        with torch.random.fork_rng(devices=[]), torch.no_grad():
+            expanded = nn.Conv2d(input_channels, channels, 3, padding=1)
+            if match_current_initialization:
+                expanded.weight.zero_()
+                expanded.weight[:, :14].copy_(layers[0].weight)
+                expanded.bias.copy_(layers[0].bias)
+        layers[0] = expanded
     if not 0 <= dropout < 1:
         raise ValueError("Dropout probability must be in [0, 1)")
     if not isinstance(residual_blocks, int) or residual_blocks < 0:
@@ -72,10 +89,22 @@ def make_encoder(activation="relu", negative_slope=0.01, channels=64, hidden_siz
 
 class Policy(nn.Module):
     def __init__(self, activation="relu", negative_slope=0.01, channels=64, hidden_size=256, batch_norm=False,
-                 batch_norm_affine=True, dense_batch_norm=False, dropout=0., residual_blocks=0, head_channels=None):
+                 batch_norm_affine=True, dense_batch_norm=False, dropout=0., residual_blocks=0, head_channels=None,
+                 history_frames=1, boosted=False, outcome_supervision=False):
         super().__init__()
+        if not isinstance(history_frames, int) or history_frames < 1:
+            raise ValueError('History frames must be a positive integer')
+        self.history_frames = history_frames
+        if boosted and history_frames != 1:
+            raise ValueError('Boosted turn histories and raw frame stacking are separate input formats')
+        if outcome_supervision and not boosted:
+            raise ValueError("Outcome-supervised variant requires boosted inputs")
+        self.outcome_supervision = outcome_supervision
+        self.boosted = boosted
+        self.input_channels = BOOSTED_CHANNELS if boosted else 14*history_frames
         self.encoder = make_encoder(activation, negative_slope, channels, hidden_size, batch_norm,
-                                    batch_norm_affine, dense_batch_norm, dropout, residual_blocks, head_channels)
+                                    batch_norm_affine, dense_batch_norm, dropout, residual_blocks, head_channels,
+                                    input_channels=self.input_channels, match_current_initialization=not boosted)
         self.policy = nn.Linear(hidden_size, 4096)
         self.value = nn.Linear(hidden_size, 1)
 
@@ -85,12 +114,23 @@ class Policy(nn.Module):
 
     def make_loader(self, paths, *, batch_size, sequence_batch_size, shuffle=False, seed=0):
         from training.datasets import ReplayDataset
-        return _make_loader(ReplayDataset(paths), batch_size, None, shuffle, seed)
+        if self.boosted:
+            from training.boosted_dataset import BoostedReplayDataset
+            if self.outcome_supervision:
+                from training.outcomes import BoostedOutcomeDataset
+                return _make_loader(BoostedOutcomeDataset(paths), batch_size, None, shuffle, seed)
+            return _make_loader(BoostedReplayDataset(paths), batch_size, None, shuffle, seed)
+        return _make_loader(ReplayDataset(paths, self.history_frames), batch_size, None, shuffle, seed)
 
     def forward_chunk(self, observations, hidden=None):
         batch, steps = observations.shape[:2]
-        logits, _, _ = self(observations.reshape(-1, 14, 8, 8))
+        logits, _, _ = self(observations.reshape(-1, self.input_channels, 8, 8))
         return logits.reshape(batch, steps, 4096), None
+
+    def forward_chunk_with_value(self, observations, hidden=None):
+        batch, steps = observations.shape[:2]
+        logits, value, _ = self(observations.reshape(-1, self.input_channels, 8, 8))
+        return logits.reshape(batch, steps, 4096), value.reshape(batch, steps), None
 
     def clip_gradients(self):
         pass
@@ -148,21 +188,30 @@ def _make_loader(dataset, batch_size, collate, shuffle, seed):
 
 
 def encode(observation):
-    planes = torch.zeros(14, 8, 8)
+    if not observation or len(observation) % 64:
+        raise ValueError('Expected complete observation frames')
+    planes = torch.zeros(14*(len(observation)//64), 8, 8)
     symbols = 'PNBRQKpnbrqk?-'
     for square, symbol in enumerate(observation):
-        planes[symbols.index(symbol), square // 8, square % 8] = 1
+        planes[14*(square//64)+symbols.index(symbol), (square % 64) // 8, square % 8] = 1
     return planes
 
 
 def create_policy(kind, activation="relu", negative_slope=0.01, channels=64, hidden_size=256, batch_norm=False,
-                 batch_norm_affine=True, dense_batch_norm=False, dropout=0., residual_blocks=0, head_channels=None):
+                 batch_norm_affine=True, dense_batch_norm=False, dropout=0., residual_blocks=0, head_channels=None,
+                 history_frames=1, boosted=False, outcome_supervision=False):
     if channels < 1 or hidden_size < 1:
         raise ValueError("Channel count and hidden size must be positive")
     if kind == "feedforward":
         return Policy(activation, negative_slope, channels, hidden_size, batch_norm,
-                      batch_norm_affine, dense_batch_norm, dropout, residual_blocks, head_channels)
+                      batch_norm_affine, dense_batch_norm, dropout, residual_blocks, head_channels, history_frames, boosted, outcome_supervision)
     if kind == "recurrent":
+        if outcome_supervision:
+            raise ValueError("Outcome supervision is supported for boosted feedforward policies only")
+        if boosted:
+            raise ValueError('Boosted inputs are supported for feedforward CNNs only')
+        if history_frames != 1:
+            raise ValueError('Stacked history is supported for feedforward CNNs only')
         return RecurrentPolicy(activation, negative_slope, channels, hidden_size, batch_norm,
                                batch_norm_affine, dense_batch_norm, dropout, residual_blocks, head_channels)
     raise ValueError(f"Unknown policy type: {kind}")

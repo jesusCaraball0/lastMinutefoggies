@@ -2,7 +2,7 @@
 
 Consolidated on **2026-11-04 (America/New_York)**. Repository: `/Users/jesuscaraball0/code/school_code/67980/fow`.
 
-**This is the single source of truth for supervised/imitation experiment findings. RL findings, stages30–44, are maintained in [RL_EXPERIMENT_HISTORY.md](RL_EXPERIMENT_HISTORY.md).** Raw metrics/checkpoints/replays are the underlying evidence; other project documentation covers operation and setup, not a parallel findings record. This document combines the locally retained numerical artifacts, historical Markdown analyses, and findings discussed in the working conversation. It covers successful runs, partial/failed attempts, reused references, negative results, instrumentation changes, and unresolved hypotheses. It does **not** invent results for missing artifacts or the newly submitted medium residual run.
+**This is the single source of truth for supervised/imitation experiment findings. RL findings, including PPO and critic-fitting experiments, are maintained in [RL_EXPERIMENT_HISTORY.md](RL_EXPERIMENT_HISTORY.md).** Raw metrics/checkpoints/replays are the underlying evidence; other project documentation covers operation and setup, not a parallel findings record. This document combines the locally retained numerical artifacts, historical Markdown analyses, and findings discussed in the working conversation. It covers successful runs, partial/failed attempts, reused references, negative results, instrumentation changes, and unresolved hypotheses. It does **not** invent results for missing artifacts or the newly submitted medium residual run.
 
 ## How to read this record
 
@@ -27783,3 +27783,312 @@ Stage43: [Paired PPO lambda1 continuation through1200 (2026-11-05; completed)](R
 
 Stage44: [Current checkpoint round robin at update1200 (2026-11-05)](RL_EXPERIMENT_HISTORY.md#stage-44).
 
+
+## History-enriched CNN follow-up
+
+The matched current-only/history4 imitation pilot and subsequent frozen-opponent PPO experiment are documented together in [RL_EXPERIMENT_HISTORY.md, stage47](RL_EXPERIMENT_HISTORY.md#stage-47). Keep its numerical results and takeaways there to avoid parallel findings records.
+
+## Recent supervised model experiments
+
+- [49. Boosted CNN: server pretraining infrastructure (2026-11-05; implemented, not launched)](#stage-49)
+- [50. Boosted CNN full historical pretraining: 50 epochs and readiness for PPO (2026-11-05; completed)](#stage-50)
+- [55. Boosted outcome CNN: matched joint-pretraining infrastructure (2026-11-06; implemented, not launched)](#stage-55)
+- [56. Wide boosted outcome CNN setup (2026-11-06; implemented, not launched)](#stage-56)
+- [57. Wide outcome baseline reduced to64/256 (2026-11-06; setup revision, not launched)](#stage-57)
+- [58. Completed medium boosted outcome pretraining](#stage-58)
+
+<a id="stage-49"></a>
+
+## 49. Boosted CNN: server pretraining infrastructure (2026-11-05; implemented, not launched)
+
+User explicitly requested a new boosted CNN variant, pretraining on all historical games for50 epochs with past hyperparameters, and cluster sync/submission/log commands. They selected20-turn history + last-seen + age. This supersedes the cancelled raw4-frame prototype as the intended input design. No local pretraining, PPO run, cluster job or new automation was started for this task. The only optimizer steps run locally were tiny temporary unit-test fixtures.
+
+### Architecture and input contract
+
+Variant name: boosted_cnn; starter directory starters/boosted_cnn; canonical future PPO identity boosted-cnn-c32-h128-f4004a979d for the configured model. Uses the previous medium residual CNN:32 convolutional channels,128 hidden features,3 residual blocks, convolutional BN,ReLU,dropout0.1. Input expansion increases parameter count from850785 to1370625; hidden/trunk dimensions are not otherwise enlarged. Existing models and variant IDs remain compatible. New inputs use ordinary framework Conv2d initialization across the entire input layer; there is no custom He reinitialization or zero-initialized boosted feature bank. The cancelled raw-frame pilot retains its distinct matched-control initialization.
+
+Boosted_v1 features total1819 spatial planes:
+
+| Component | Planes | Meaning |
+| --- | --- | --- |
+|20 own-turn records |1800|Each record90 planes, newest first; missing records zero-padded|
+|Within each record: observed board |14|Original piece/color/empty/unknown encoding at that own decision|
+|Within each record: previous completed own move |73|56 ray classes,8 knight classes,9 underpromotion classes, anchored at origin; absent at first own turn|
+|Within each record: observed captures |2|Where we last captured an enemy; where enemy last captured one of ours, inferred from allowed views/actions|
+|Within each record: own color |1|White1/black0 on valid records|
+|Current own castling rights |2|Known kingside/queenside rights from existing tracker|
+|Last-seen contents |14|Last actually observed contents of each square, including known empty versus never-seen unknown|
+|Age |1|Plies since that square was visible, capped254 and divided254|
+|Ever-seen |1|Separates never-seen from old saturated-age observations|
+|Current visibility |1|Which squares are currently visible|
+
+History records advance once per own decision (20 turns, usually40 plies), rather than the cancelled4-view every-ply stack. Last-seen and age update on every observation received, including opponent-turn observations. Age0 means visible now. Last-seen pieces are stale evidence, not asserted current truth. Only actual earlier own moves are encoded; the target action is recorded after its input has been emitted. Own capture metadata includes observable en-passant captures. No sensing-action or illegal-attempt feedback is fabricated because our game does not supply those RBC-specific channels. No unseen opponent actions or hidden board fields enter the features.
+
+Implementation: starters/shared/boosted_features.py; shared checkpoint-compatible Policy/create_policy; imitation dataset/probes; in-process PPO agents; standalone policy_bot and bundled arena runtime. Model kind stays feedforward with model_config.boosted=true, so existing PPO/evaluation/export machinery can use it after imitation pretraining. There is one separate canonical RL file for this variant when PPO is eventually requested; original full/residual weights are untouched.
+
+### Full-data storage and training recipe
+
+training/boosted_dataset.py builds disk-backed compact per-decision rows, not full float history stacks. One row203 bytes, plus4-byte game-start index and2-byte label; approximately1.2GiB for6million positions. __getitem__ gathers up to20 same-player records using within-game indices and constructs1592 uint8 packed tokens. Feature planes are expanded only for a batch on the selected device. This avoids hundreds of gigabytes of repeated float history materialization. Cache at out/cache/boosted-v1 is versioned/keyed by ordered source paths, sizes and timestamps, protected by a file lock, and committed with a manifest only after successful preprocessing. Interrupted preprocessing rebuilds safely. No new dependency is required beyond existing training requirements.
+
+training/boosted_cnn.sbatch requests the existing mit_normal_gpu allocation:1GPU,4CPUs,32GiB RAM,6hours. It activates existing .venv-cnn and checks CUDA. Full dataset,seed7980,90/10 game-level split, no train/validation file limits. Training settings exactly match the previous residual_cnn.sbatch, verified by parsing/comparing all flags other than the new --boosted flag:
+
+-50epochs,batch128,global grad clip5,default initialization.
+-AdamW LRstart1e-4,peak1e-3,minimum1e-5;5820 warmup updates then cosine decay across all50 epochs.
+-Betas0.9/0.99,epsilon1e-8,weight decay0.01.
+-Best checkpoint maximizes legal top1 on8192 fixed held-out moves; raw validation metrics cover the entire validation split; earlier checkpoint wins ties.
+-Existing losses/LR/gradients/update ratios, activation diagnostics/final per-layer weight+activation histograms, plots, split manifests and epoch-boundary optimizer/RNG resume retained.
+
+Fresh outputs: out/experiments/boosted-cnn-JOBID; logs logs/boosted-cnn-JOBID.out/.err. Initial feature encoding progress is in stderr. Wall time for1819-channel inputs is not established; no claim50 epochs fits6hours. If the allocation expires, resume the original last_policy.pt with a new sbatch allocation; it keeps the original run directory, optimizer/schedule and selected best. If no epoch checkpoint exists yet, resubmit fresh and reuse/rebuild the cache. No unconditional automatic resubmission is installed.
+
+### Verification and operation
+
+Full73-test suite passed in32.1seconds. Added20-own-turn/en-passant coverage afterward; focused boosted suite7 tests passed in8.5seconds. Together these exercise the74-test current suite's coverage, including dataset/live/probe token parity, future-target/hidden-board isolation, captures/promotion encoding, padding/reset, no cross-game/side history, cache reuse, tiny temporary imitation/resume/PPO integration, standalone bundled protocol play for both colors and old canonical variant compatibility. Shell syntax and git diff whitespace checks passed. A read-only128-historical-game audit produced11610 valid boosted examples; this is encoding validation, not a model training run or exhaustive data audit.
+
+Operational commands are in training/CLUSTER.md; starters/boosted_cnn/README.md documents the variant. Code-only rsync excludes game_data,out,logs,weights,environments and work; remote historical games/results remain. Submission: sbatch training/boosted_cnn.sbatch. Resume: sbatch training/boosted_cnn.sbatch --resume out/experiments/boosted-cnn-OLD_JOB_ID/last_policy.pt. No new experimental losses, accuracies or playing-strength results exist yet. This setup does not launch the subsequent PPO stage or PSRO.
+
+Final release verification for stage49: full74-test suite passed in31.8seconds after all feature/cache/initialization changes. No user-data pretraining or Slurm submission was performed.
+
+Stage49 dataset-size clarification from server job28018186: train55250 usable games/5350942 moves; validation6141 usable games/595179 moves. Total61391 usable games/5946121 labeled moves. Local recount confirms61445 replay JSON files, selected55301/6144 by the seeded90/10 split;51/3 files have no usable labeled examples (unfinished/unrecognized results or no moves). Counts match earlier full-data CNN/residual runs; the job is not running a pilot subset. No evidence supports150000 games in the current dataset. This is dataset metadata, not a training result.
+
+<a id="stage-50"></a>
+
+## 50. Boosted CNN full historical pretraining: 50 epochs and readiness for PPO (2026-11-05; completed)
+
+### Evidence, completion, and comparability
+
+Run: `out/experiments/boosted-cnn-28018186/`. The initial local reading caught a download in progress (48 epochs); the completed download supersedes it. Final metrics explicitly report **completed**,50/50epochs, best_epoch50. Final plots, weight/activation histograms and best/last/final checkpoints are present. All three checkpoint state dictionaries are finite and tensor-identical, at epoch50. No training or PPO was started during this analysis. This is the first completed intended boosted pretraining run; the cancelled stage47 pilot is not its matched current-only control.
+
+Ordered train and validation split filenames were checked against residual-medium-27890681 and match exactly. Both use5350942 training moves/55250 usable games and595179 validation moves/6141 games,seed7980,50epochs,batch128,AdamW(.9,.99),eps1e-8,decay.01,clip5,warmup5820updates,LR1e-4→1e-3→1e-5. Each completed2090250optimizer updates. Boosted retains32channels/128hidden/3residual blocks/convBN/ReLU/dropout.1 but expands inputs to1819planes and parameters from850785 to1370625 (+61.1%). Thus data and training budget match; this is a combined representation/parameter-count/initialization realization comparison, not a feature-isolating ablation or replicated-seed estimate. No feature-group ablation identifies whether20-turn boards, past actions, captures, or last-seen/age supplied the gains.
+
+Reported training wall time16687.9seconds (4.64hours), versus13678.5seconds (3.80hours) for the old residual. Hardware/data-loading differences can affect this comparison. It is an observed run time, not a throughput guarantee.
+
+### Selected-checkpoint imitation metrics
+
+The selection criterion remains highest legal top1 on8192 fixed held-out positions, not minimum full-validation loss. Boosted selects epoch50; old residual selects49. Full-validation raw metrics below use all595179 held-out moves. Legal metrics use the fixed8192-position probe, without conflating legality with the observation-based king-safety filter. These are imitation metrics, not win rates.
+
+| Metric | Residual best49 | Boosted best50 |
+| --- | ---: | ---: |
+| Training cross entropy |2.66135|2.61881|
+| Full-validation cross entropy |2.61368|2.47430|
+| Full-validation top1 |31.153%|34.884%|
+| Full-validation top5 |62.190%|65.741%|
+| Legal probe top1 |31.519%|35.046%|
+| Legal probe NLL |2.51455|2.42001|
+| Probability on legal candidates |86.983%|89.440%|
+| Legal distribution entropy (nats) |2.24923|2.09562|
+
+Legal accuracy improves3.528percentage points; raw held-out accuracy improves3.731points; full-validation NLL falls.13938 (5.33%). At epoch48, the matched epoch comparison is34.853% versus31.145% raw top1 and2.47667 versus2.61503 validation NLL, so the advantage does not depend solely on best-checkpoint selection. The legal probe is a small correlated subset of moves and not8192 independent games; do not infer a game-win confidence interval from it.
+
+| Boosted epoch | Train CE | Validation CE | Full top1 | Legal top1 |
+| --- | ---: | ---: | ---: | ---: |
+|1|3.17478|2.71872|31.182%|30.823%|
+|10|2.77683|2.65885|32.322%|33.044%|
+|20|2.75233|2.71986|32.706%|32.617%|
+|30|2.70133|2.57725|33.349%|33.350%|
+|40|2.53058|2.50160|34.414%|34.473%|
+|45|2.54952|2.48263|34.701%|34.778%|
+|48|2.49293|2.47667|34.853%|34.583%|
+|49|2.50241|2.47525|34.862%|34.741%|
+|50|2.61881|2.47430|34.884%|35.046%|
+
+Learning continues late, but at diminishing gains: full-validation top1 adds.470points from40→50 and.032points from49→50. Validation loss remains improving;50epochs does not establish convergence. This is not the classic training-loss-down/validation-loss-up pattern of sustained overfitting. Training loss includes dropout and train-mode BN, while validation uses eval mode, so train>validation is not paradoxical. The last-epoch training CE rises despite improving validation; raw gradient spikes and feature scale drift justify caution rather than treating the training-loss jump alone as generalization collapse.
+
+### Optimization: the old concern persists, with a heavier extreme tail
+
+At boosted epoch50, pre-clipping global gradient L2 mean62.915,median34.769,p95=63.941,max278925.19. Old residual best49:mean53.251,median44.743,p95=111.486,max739.91. Boosted has lower typical gradients (median/p95), but much larger rare spikes. The largest boosted epoch-level maximum is289807.125 at46; the residual's run-wide maximum is69942.656 at50. Comparing selected-epoch maxima alone would obscure that the residual also has outliers.
+
+Clipping affects10.20% of updates at epoch1, exceeds99% by epoch4, and reaches100% in later epochs. At50 all41805 updates are clipped; post-clipping global norm averages5.00000. Every recorded global gradient nonfinite count is0 across50epochs, and final weights/recorded activation statistics are finite. Clipping controls the update input norm; it does not eliminate the cause of scale drift, and clipping frequency alone is not evidence that training diverged.
+
+| Boosted epoch50 layer | Mean pre-clip L2 | p95 pre-clip | Maximum pre-clip | Mean post-clip L2 |
+| --- | ---: | ---: | ---: | ---: |
+|Input convolution encoder.0|4.983|2.251|38485.38|.255|
+|Input BN encoder.norm0|27.560|11.301|253943.22|1.100|
+|Last residual conv2|5.501|8.542|2531.48|.664|
+|Last residual BN2|18.499|27.457|37997.47|1.727|
+|Dense encoder.5|10.443|12.018|287.40|1.428|
+|Policy linear head|19.107|20.605|43.47|2.639|
+
+The mean exceeding p95 in early layers reflects rare severe outliers. The worst input-BN spike shows that the issue is not confined to the final dense/head layers. Sampled actual optimizer update/parameter L2 medians at50 are1.083e-5/input convolution,1.549e-6/dense and2.796e-7/policy; respective p95 values1.181e-5,1.692e-6,3.061e-7. These are small late actual relative updates, despite alarming raw gradients. Sampling every100steps can miss rare updates. Policy gradient magnitude is much larger than in the old residual (mean19.107 vs.17325), but global clipping, weight scale and Adam preconditioning prevent interpreting that ratio as an equally large parameter-update ratio.
+
+### Activation and weight histograms: mixed health, not wholesale collapse
+
+Statistics use512 fixed validation observations, not all held-out games. First ReLU encoder.1 has56.48%zeros,mean.0128,std.0210; zeros alone are normal for ReLU. The residual trunk becomes very sparse: block0 output81.06%zeros,block1 output91.85%,final block95.53%. Final-block dormant-channel fraction is68.75% using the recorded relative-activity threshold; these are activity diagnostics, not proof those channels are permanently dead on every state.
+
+Final-trunk largest-channel activity share improves from89.67%/old residual best to77.48%/boosted; top4 still account for99.17%. Dense output encoder.6 goes the other way: its largest unit contributes96.37% of total mean absolute activation, versus7.78% in the old residual. Its overall zero fraction is54.76%,similar to residual54.49%,which demonstrates why aggregate zero fraction alone misses scale concentration. Dense std grows.368/epoch1→1.478/20→6.908/40→21.739/50. Dominant channel72 has mean238.199,std65.004 and is positive on every sampled observation. This is substantial feature-scale drift, not a clean bill of architectural health.
+
+Final policy logits have mean−555.13,std141.03 on these observations; the policy weight histogram is strongly negative/skewed rather than a requirement-satisfying Gaussian. Negative logits themselves are harmless: softmax depends on differences, and a state-dependent common offset cancels exactly. The outgoing weights for dense72 have mean−2.16131 and across-action std.03724,versus median across-action std2.96459 for policy columns. Much of that huge unit therefore contributes a common logit offset. A normally distributed weight histogram is not itself the learning objective, and activation mass is not predictive importance.
+
+To test function rather than infer from histograms, the selected boosted50 checkpoint was evaluated locally in eval/inference mode on the same8192 held-out probe and then with dense channel72 set to zero by a removable forward hook. No weights, BN buffers or checkpoint files were updated:
+
+| CPU inference probe | Intact | Dense72 zeroed |
+| --- | ---: | ---: |
+|Legal top1|35.022%|34.277%|
+|Legal NLL|2.42006|2.48208|
+|Raw top1|34.875%|34.058%|
+|Legal probability mass|89.439%|88.972%|
+
+Removing the unit costs.745percentage points of legal accuracy and.06202NLL. It is useful, but96%activation share emphatically does not mean96%of the policy's decisions come from that unit. This inference intervention is an out-of-distribution ablation, not a retrained smaller model. CPU intact legal accuracy differs from the saved CUDA probe by2/8192 positions (.0244points); NLL differs.000054. Small backend rounding differences with large logits are a plausible explanation, not a tested attribution. Report saved CUDA results for the training comparison and local CPU results for the paired intervention.
+
+The value output histogram (mean5.33,std1.43) is **not a learned outcome predictor**: imitation only supervised policy loss. Existing PPO initialization zeroes the untrained value head for a fresh supervised checkpoint. Do not carry this arbitrary value scale into an interpretation of critic quality.
+
+### Takeaways and next experiment
+
+1. The combined boosted representation/model is a better historical move predictor than the prior medium residual under matched split and optimization budget. It supplies a promising starting actor; this does not establish superior live play, history-specific causality, or robustness to new opponents.
+2. History did not cure gradient clipping, trunk concentration, or dense feature-scale drift. Nevertheless, loss/accuracy improve and the unit ablation argues against describing the entire actor as collapsed. More architecture changes or another long imitation run are not justified solely by histogram appearance.
+3. **Proceed next to a short monitored PPO experiment, preceded by a frozen-game benchmark**, rather than immediately committing a long blind RL run. Use boosted best_policy.pt (epoch50; identical to latest/final). Benchmark against the supervised residual and established RL opponents with balanced colors and fixed seeds, then train boosted against a balanced fixed mixture of full latest2200 and residual saved-best1200. Preserve those opponents; update boosted alone initially, so opponent drift does not obscure its own progress. Do not use residual latest2200 as the only strong opponent: stage45 found it had regressed against its incumbent.
+4. A400-update initial PPO budget is a reasonable next experiment, using the established lambda1 recipe as the starting reference, with evaluations at0 and regular intervals. Track fixed-opponent score, rewards/draws/length, KL/entropy/ratio clip, global gradient clipping, MC outcome RMSE/EV and feature scales. Keep the original supervised file separate and the new boosted canonical RL file plus embedded best. Stop/reassess if score or critic transfer deteriorates;400 is a diagnostic budget, not a promised convergence horizon. Critic initialization and the high-scale shared representation deserve monitoring; zero initialization does not guarantee a well-conditioned critic after its first updates.
+5. Hold PSRO until there is evidence that this third actor learns useful complementary behavior. No boosted PPO, arena benchmark or PSRO run was launched by this analysis, and no new game-win metric is claimed here.
+
+Reproducible derived analysis: `work/analyze_boosted_snapshot.py`; completed checkpoint/report verification: `work/report_boosted_completed.py`. New numerical evidence: `out/experiments/boosted-cnn-28018186/completed-run-analysis/snapshot-analysis.json`, including full per-epoch layer gradients/update ratios/activity summaries and SHA256s for best/last; derived comparison plot `training-comparison.png`. Original metrics and checkpoints are untouched. Final server-generated per-layer histograms remain in `histograms.json`, `activations/` and `weights/`.
+
+<a id="stage-55"></a>
+
+## 55. Boosted outcome CNN: matched joint-pretraining infrastructure (2026-11-06; implemented, not launched)
+
+User requested a new boosted_outcome_cnn variant using the medium residual backbone and same full-data server pretraining setup,adding game-outcome prediction alongside next-move prediction. This is a controlled training-objective comparison against boosted-cnn-28018186,not a bigger network or a new feature design. Model:32channels,128hidden,3residual blocks,convBN,ReLU,dropout.1;1819boosted input planes;1370625parameters. Input features retain20own-turn observation/action histories,last-seen contents,age,visibility/ever-seen,own castling/color/capture metadata. Game state means available observations/known metadata,not unseen board contents. Final result is a **target only**,never an input. No full-data local training,server job,PPO or automation was launched.
+
+New starter `starters/boosted_outcome_cnn`,same shared inference/game contract. Training flag `--boosted-outcome` implies boosted inputs and sets model_config.outcome_supervision=true;kind staysfeedforward. New canonical future RL identity `boosted-outcome-cnn-c32-h128-4abf38ebb1` prevents resuming/overwriting ordinary boosted or prior full/residual RL policies. Old canonical IDs remain unchanged. Same-seed initialization is tensor-identical between ordinary boosted and outcome variant (no extra layer/parameter/RNG draw). Train from scratch;do not initialize this comparison from an already RL-trained actor.
+
+Objective per batch:move cross-entropy +0.5*outcome MSE. Shared encoder and existing linear+tanh value head are trainable;the value loss supplies encoder gradients from the start. Historical own-side final outcome targets win+1/loss−1/draw+.1,**undiscounted**,matching the literal game-outcome prediction task rather than estimating current-policy return. Subsequent PPO usesgamma.99 and different behavior/opponents,so transfer remains an empirical question. Outcome targets require fow-v1,recognized gameplay termination andno bot failure. Invalid/failure outcomes are masked only for value supervision;their existing valid move examples remain,keeping move dataset/split/count matched. No hidden replay board fields are consulted.
+
+`training/outcomes.py` subclasses the existing BoostedReplayDataset and reuses the same compact feature cache,adding locked/atomically built per-position float32targets and validity sidecars underoutcome-v1. Observations and action labels are byte-identical across differing final game results in tests. Sidecars check positional/game-boundary alignment;counts,target moments and masked games/positions are recorded. Validation uses the original game-level held-out split;the server script explicitly loadsout/experiments/boosted-cnn-28018186/data_split.json.
+
+Recipe remains50epochs,batch128,seed7980,AdamW betas(.9,.99),eps1e-8,decay.01,globalclip5,startLR1e-4/peak1e-3/floor1e-5,5820warmupupdates then cosine overthe50epochs. Both objectives share that optimizer/schedule;no separate high critic LR is introduced. Select best by the existing8192-position legal-move accuracy probe,not a new outcome-selection rule. Thus the intended treatment is joint outcome supervision with an explicitfixed.5MSE coefficient;this is one seed and cannot establish training-seed robustness. Move-only baseline labels/data are retained.
+
+Existing metrics.loss remains move CE for compatible plots/comparisons;newtotal_loss andoutcome dictionaries distinguish combined objective from policy quality. Outcome metrics:eligible-position MSE/RMSE/MAE/EV,prediction/target means/stds,win/loss sign accuracy(excluding draws),and training-mean constant MSE onvalidation. Existing per-layer/global gradients,update ratios,LR,legal metrics,activation statistics and final histograms continue. Newoutcome_training.png plots joint loss and outcome metrics byepoch. Valueloss contributes to the recorded gradients;do not compare joint raw gradient magnitude as if the objective were unchanged.
+
+Checkpoints markvalue_pretrained=true so fresh PPO preserves the trained historical value head instead of zero-initializing it. Later PPO does not treat this as an exact current-policy critic. Resume restoresjoint model,optimizer,LR/shuffle/RNG,saved settings and original run directory. Standard standalone export/bot play works. Slurm `training/boosted_outcome_cnn.sbatch`:mit_normal_gpu,1GPU,4CPUs,32GiB,6hours,existing.venv-cnn;outputsout/experiments/boosted-outcome-cnn-JOBID,logslogs/boosted-outcome-cnn-JOBID.out/.err. It requires the original boosted split and supports --resume first. No installation is needed when the existing environment is intact. Prior boosted took4.64hours,but this does not guarantee the joint run fits6hours;epoch checkpoints allow a new allocation.
+
+Implementation verification:77-test full suite passed in35.9seconds after the core integration;focused outcome tests also cover value gradients reaching encoder while policy-head gradient remainsabsent for a value-only loss. Tiny synthetic fixtures exercised actual2-epoch interruption/resume,nonzero value gradients,outcome plots,metadata/value-preserving PPO update and bundled protocol play. These are tests,not user-data experiments or evidence of improved learning. Cluster/code-sync/submission/tail/resume/pull commands are in training/CLUSTER.md. Next evidence should compare full-validation move+outcome metrics and then equal-budget PPO benchmarks;better historical outcome regression alone would not establish stronger play or solve the critic issue.
+
+<a id="stage-56"></a>
+
+## 56. Wide boosted outcome CNN setup (2026-11-06; implemented, not launched)
+
+User proposed another variant wider like the Bertram2022 model. Preparedboosted_outcome_wide_cnn with256conv channels and512shared dense units,retaining the existing1819boosted inputs,3residual blocks,BN/ReLU/dropout.1,two heads and joint move/outcome loss. Architecture:1819x8x8→3x3conv256→3two-conv residual blocks256→flatten16384→dense512/ReLU/dropout→4096policy logits andscalar linear+tanh outcome. Total18,226,177parameters,13.30x the medium outcome model's1,370,625. Bertram'sfigure uses five256-channel shared convolutions and separate two-layer256-channel1x1convheads;this variant matches spatial width but retains our own residual/dense/head design. It is a combined width test,not a paper reproduction or separate stem-versus-dense ablation.
+
+Identical training arguments to stage55 exceptchannels32→256andhidden128→512,verified by parsing both sbatch fresh-job flag sets and comparing all settings. Same original boosted splitmanifest,full data,50epochs,batch128,seed7980,AdamW(.9,.99)/eps1e-8/decay.01,LR1e-4→1e-3→1e-5,5820warmupupdates,globalclip5,legalaccuracy selection. Same undiscounted own-side outcome targets andfailure masks,CE+.5MSE,metrics,plots,resume andpretrained-head-preserving PPO behavior. Train from scratch;none of the existing pretrained/RL weights are reused as initialization or overwritten. Comparison should be wide joint versusmedium joint;comparing only againstmedium move-only would confound width andsupervision.
+
+New starterstarters/boosted_outcome_wide_cnn;new scripttraining/boosted_outcome_wide_cnn.sbatch. Existing generic model/trainer already support these widths,so no corealgorithm change was required. Canonical future RL identityboosted-outcome-cnn-c256-h512-24c010c742;separate frommedium outcome/boosted/full/residual variants. New run/log prefixboosted-outcome-wide-cnn-JOBID. Requests1GPU,4CPUs,32GiB,6hours perallocation;runtime is unmeasured andmay require multipleallocations. Resume--resume original last_policy.pt first;retains originaldirectory and50-epoch scheduler. No automatic chained submissions are installed.
+
+Verification:both batch2synthetic inference outputs haveexpected shapes4096logits,1value,512features andfinite values;parameter count/variant IDchecked;bash syntax andgit whitespacechecks passed. No optimizersteps on thewide model,no local historical training,no remotejobsubmission orautomation launched. Previous core integration suite/focused outcome checks apply;this task adds only starter/config/docs. Sync,submit,tail,resume andpull commands appended totraining/CLUSTER.md. No accuracy,critic orPPO improvements are claimed before measurements.
+
+<a id="stage-57"></a>
+
+## 57. Wide outcome baseline reduced to64/256 (2026-11-06; setup revision, not launched)
+
+User selected64convolutionchannels/256denseunits as a more practical width baseline. This supersedes the unlaunched256/512configuration in stage56;no18.23Mmodel training occurred. The existingstarter/scriptnameboosted_outcome_wide_cnn is retained,but fresh submissions now use64/256 and3,372,033parameters(2.46x medium1,370,625). Architecture:1819x8x8→stem64→3residual blocks64→flatten4096→dense256→4096move logits andscalar outcome.
+
+Only channel/hidden widths differ from medium outcome32/128;parsed fulltraining arguments verified identical otherwise. Same full-data split,50epochs,joint loss,AdamW/schedule,metrics andlegalaccuracy selection. New future canonical identityboosted-outcome-cnn-c64-h256-68076ee2fe is distinct from medium andtheunlaunched18Mconfiguration. Existingweights/checkpoints were not touched. Updated starterREADME andCLUSTER instructions;fresh-job naming/log/resultpaths remainunchanged. Re-sync code before server submission. Resume always preserves the checkpoint's saved dimensions rather than converting architectures.
+
+Checks:3,372,033parameter count;batch2 inference shapes4096logits/1value/256features;finite predictions;bash syntax;recipe difference exactlychannels32→64,hidden128→256. No optimizersteps,user-data training,serverjob ormonitor was launched.
+
+<a id="stage-58"></a>
+
+## 58. Completed medium boosted outcome pretraining: historical value learning and matched move-only comparison (2026-11-06)
+
+### Completion, data and comparison contract
+
+Run `out/experiments/boosted-outcome-cnn-28094904`:status completed,50/50epochs. Best policy selected at43 by the unchanged8192-position held-out legal-move accuracy probe. Final/last checkpoint is50;final histograms/plots are present. Best43,last50,final50 checkpoints all load with finite tensors andvalue_pretrained=true/outcome_supervision=true. The currently running64/256wide job28107503 is not part of these findings;its downloaded31-epoch snapshot is neither a completed run nor evidence of termination.
+
+Matched reference:boosted-cnn-28018186,ordinary move-only boosted32/128,best50. Both have1370625parameters,1819input planes,32channels/128hidden,3residual blocks,convBN/ReLU/dropout.1. Ordered train/validation filenames match exactly;parameter count,seed,optimizer/schedule,global clip,batch size,total updates anddata/probe counts were compared and match. Same full5350942train moves/55250usable games and595179validation moves/6141games;50epochs,2090250updates,batch128,seed7980,AdamWbetas(.9,.99)/eps1e-8/decay.01,globalclip5,start1e-4/peak1e-3/floor1e-5,5820warmupupdates then cosine. The previous setup tests verified identical same-seed initialized weights with the outcome flag toggled. This is one training seed;there is no training-seed uncertainty estimate.
+
+Treatment:moveCE+.5*outcomeMSE jointly updates encoder,policy andvalue heads. Outcome targets are own-side **undiscounted** terminalwin+1/loss−1/draw+.1,not hidden state inputs orcurrent-policy discounted returns. Eligible outcomes:5332962train and592666validation positions. Outcome-only masks exclude17980train positions/190games and2513validation positions/27games with unreliable/incompatible/failure outcomes;their existing valid move examples remain. Thus move data stay matched. Historical outcome statistics below are not reinforcement-learning results.
+
+Training walltime18191.1seconds(5.05hours),versus16687.9seconds(4.64hours)for ordinary boosted,about9.0%longer in recorded walltime. This is a descriptive comparison,not a controlled hardware-throughput benchmark. No new training orarena games were launched during analysis.
+
+### Policy prediction: close to move-only,small selected-checkpoint cost
+
+Full-validation metrics cover595179moves;legalmetrics cover the fixed8192position probe. Classification accuracy is matching the recorded historical move,not game-winning accuracy.
+
+|Metric|Move-only best50|Joint selected43|Joint final50|
+|---|---:|---:|---:|
+|Train move CE|2.61881|2.51719|2.53456|
+|Validation move CE|2.47430|2.49157|2.47568|
+|Validation raw top1|34.884%|34.552%|34.767%|
+|Validation raw top5|65.741%|65.469%|65.695%|
+|Legal probe top1|35.046%|34.851%|34.607%|
+|Legal probe NLL|2.42001|2.43204|2.42258|
+|Probability on legal candidates|89.440%|88.780%|89.109%|
+
+At selected checkpoints,joint legal accuracy is.195percentage points lower(16/8192positions)andfull raw accuracy.332points lower. At matched final50,the full raw difference shrinks to.118points andCE difference to.00138. These small move differences do not establish stronger/weaker game play;the probe is correlated within games andhas been repeatedly used for selection. At matched43,joint full raw accuracy34.552%versusmove-only34.484%,andlegal34.851%versus34.521%;the selected-best comparison is not the only view of the trajectory.
+
+Final50 has minimum validationCE andmaximumfull-validation rawaccuracy,but43 wins the legal selector. Minimum outcomeMSE occurs49(.712748). These different rankings are expected for different metrics and noisy subsets;43 being selected does not establish late training collapse or that50 is universally worse. Keep the selection protocol unchanged for comparisons rather than silently choosing a new criterion after observing results.
+
+### Outcome prediction: a meaningful historical signal
+
+|Outcome metric|Train43|Validation43|Train50|Validation50|
+|---|---:|---:|---:|---:|
+|MSE|.717284|.715806|.710501|.713818|
+|RMSE|.846926|.846053|.842912|.844878|
+|MAE|.743538|.745874|.737497|.741160|
+|Explained variance|.216716|.221705|.224123|.224011|
+|Win/loss sign accuracy,draws excluded|69.051%|69.096%|69.465%|69.181%|
+
+Validation training-mean constant predictor:MSE.919615,RMSE.958966,EV0. Selected43 reduces MSE by22.16%relative tothatconstant;final50 reduces it22.38%. Final43 predictionmean−.004807 versus targetmean+.003826,predictionstd.431604 versus targetstd.958966. The mean bias is small,so this improvement is not merely learning the average outcome. Win/loss accuracy is evaluated on544552decisive held-out positions;majority-label accuracy isabout50.23%. Remaining48114eligible positions are fromdraws. None of these percentages is a game win rate,three-class probability calibration,or a causal estimate ofposition quality.
+
+Train values are online measurements spanning changing weights,dropout andtrain-modeBN;validation isfixed-model eval-mode. Close train/validation errors are reassuring butnot an exact fixed-model train-versus-validation generalization comparison. Full held-out games are unseen by the optimizer,but repeated experimentation/selection has adapted to thisvalidation split;there is no new untouched test set orgame-cluster confidence interval here. Near-terminal positions may be much easier than early/midgame positions;aggregateEV does not establish useful long-horizon credit prediction.
+
+|Joint epoch|Validation moveCE|Validation raw top1|Legal top1|Outcome validation RMSE|Outcome validation EV|
+|---|---:|---:|---:|---:|---:|
+|1|2.73313|30.989%|31.372%|.878609|.169386|
+|10|2.87062|31.361%|31.860%|.884482|.155795|
+|20|2.62081|32.525%|32.019%|.868014|.182142|
+|30|2.57537|33.347%|33.301%|.871075|.180900|
+|40|2.50377|34.345%|34.595%|.849944|.215198|
+|43|2.49157|34.552%|34.851%|.846053|.221705|
+|50|2.47568|34.767%|34.607%|.844878|.224011|
+
+No sustained late outcome-validation divergence appears:validation andtraining improve at broadly similar rates. This is stronger evidence for learning useful historical outcome features than the prior frozen-encoder head-only attempts,butdifferent labels,policy distributions andtraining budgets prevent direct causal comparisons. Move-only boosted did not superviseitsvaluehead atall;itsarbitrary value output is not a fair trained-critic baseline.
+
+### Activation health: concentration improved substantially,not eliminated
+
+Statistics below use the same512validation-observation probe,not theentireheld-out distribution. Largest-unit share means share oftotalmeanabsoluteactivity,not predictive importance. Final-epoch histograms arefrom50,whereasselected43statistics areinmetrics.json.
+
+|Metric|Move-only best/final50|Joint selected43|Joint final50|
+|---|---:|---:|---:|
+|Final-trunk largest-channel activity share|77.48%|55.68%|56.99%|
+|Final-trunk zero fraction|95.53%|96.61%|96.51%|
+|Final-trunk dormant-channel fraction|68.75%|62.50%|65.625%|
+|Dense largest-unit activity share|96.37%|46.70%|52.99%|
+|Dense activation std|21.7387|.9671|1.2440|
+|Dense zero fraction|54.76%|54.02%|53.33%|
+|Dense dormant-unit fraction|11.72%|14.84%|14.84%|
+
+This is a substantial reduction of the previously extreme dense scale/outlier concentration withnear-preservedmoveaccuracy. It does not prove the representation is healthy everywhere:oneunitstillcarriesabout half ofdenseactivity,andthefinaltrunkremainsvery sparse. Dense dormancy did not uniformly improve. ReLUzeros alone are not evidence of failure;large activity share is not equivalent todecision importance,as the earlier channel72ablation demonstrated.
+
+Selected43policy raw-logit mean−75.93/std20.03 versusmove-only50−555.13/std141.03;finaljoint50mean−83.82/std25.88. Reduced raw scale is descriptive,not a direct quality metric;common logit offsets cancel under softmax. Histograms namedvaluecapturethelinear head **before tanh**,so theirstd(.817at43,.831at50)differsfromfinaloutcome-predictionstd(.432/.442). Thebounded predictions andfull-validation outcomesummary aretheappropriatecriticmetrics.
+
+### Gradients:joint supervision did not cure clipping orrare spikes
+
+Selected43pre-clipglobalL2 mean53.222,median41.952,p95=110.857,max74320.03;final50mean61.533,median40.180,p95=99.047,max199584.75. Move-only50:mean62.915,median34.769,p95=63.941,max278925.19. Joint run-wide maximum322113.47(epoch32),versusmove-only289807.13(epoch46). Theaddedobjectivechanges gradients,so this isnot an equal-loss gradient comparison. Joint typicalmedian/p95gradientsarenot uniformlylower,andtheextreme tailremains.
+
+Clippingfraction11.91%at1,59.35%at2,97.93%at3,99.993%at4,and100%atselected43/final50. Post-clipping globalnorm averages5. All recordedglobalgradient nonfinitecountsare0;loadedselected/finalweightsarefinite. Do not infer numericaldivergence from clippingfrequency alone,nor claim thejointobjective solved optimizationstability because denseactivationstd improved.
+
+|Layer,joint43|Mean pre-clipL2|p95pre-clip|Maximum pre-clip|
+|---|---:|---:|---:|
+|Input convolution|2.179|2.340|11409.41|
+|Input BatchNorm|9.763|12.739|52231.93|
+|Final residual BN2|31.469|74.924|7927.25|
+|Dense encoder.5|11.662|14.241|196.63|
+|Policy head|.900|.998|2.61|
+|Value head|.715|1.714|4.75|
+
+At50,sampledmedianactualupdate/weightL2:inputconv9.719e-6,dense1.546e-6,policy2.889e-7,value2.855e-6. Smalllateactualupdatescoexistwithrarelargegradientspikes;100-stepsamplingcanmissrareupdates. Full layergradient/update tracesremain innewanalysisJSONandoriginalmetrics.
+
+### Findings, takeaways, and next directions
+
+1. **Joint outcome supervision learned a meaningful historical signal.** Held-out EV is about0.22, decisive-position accuracy is about69%, and MSE is about22%lower than the training-mean constant. The small mean bias at43 shows that this is more than mean calibration. This is a promising PPO initialization, not evidence that fresh on-policy EV will also reach0.22.
+2. **The move-prediction cost is small in this run.** The selected joint checkpoint trails move-only best by0.195legal-accuracy points. At matched final50, full raw accuracy is only0.118points lower. No arena benchmark was run, so neither move accuracy nor outcome accuracy establishes stronger play.
+3. **Dense concentration and scale improved substantially; clipping and rare spikes did not.** At50, the dominant dense-unit share is52.99%versus96.37%, and dense std is1.244versus21.739. These are useful representation-health observations, but one unit still carries about half of activity and the trunk remains sparse. They do not demonstrate that optimization is fully stabilized.
+4. **Wait for the wide run before judging capacity.** Compare completed64/256joint pretraining against this32/128joint run using the same move and outcome metrics, constant baseline, gradient/activation diagnostics and training budget. Its31-epoch download remains a partial snapshot of a running job.
+5. **The decisive next test is fresh-game transfer.** Benchmark the joint actor against frozen full2200/residual-best1200, measure its critic against current-policy discounted returns, then compare the same400-update PPO budget with the original boosted protocol. Preserve the trained value head, as the implementation does. Historical undiscounted labels and current discounted returns differ; calibration and adaptation are expected. No PPO or arena was launched by this analysis.
+6. **Keep checkpoint selection explicit.** Epoch43 is the established policy-selected candidate. Epoch50 can be evaluated as a separately identified final candidate; it should not silently replace43 because another metric looks better. Multiple training/evaluation seeds and game-level uncertainty would strengthen conclusions. A breakdown by game phase or remaining decisions would test how much outcome accuracy comes from near-terminal positions.
+
+Reproducibility scripts: `work/analyze_boosted_outcome_pretrain.py` and `work/report_boosted_outcome_pretrain.py`. Derived evidence: `out/experiments/boosted-outcome-cnn-28094904/analysis/comparison.json` and `joint-vs-move-only.png`. The JSON contains matched split/recipe checks, three checkpoint SHA256/finite checks, selected/final metrics, per-epoch gradients/update ratios/activation summaries and both training curves. Original checkpoints, metrics and histograms are untouched. These supervised findings belong here; subsequent PPO results belong in RL_EXPERIMENT_HISTORY.md.
+
+### Follow-up decision: retain joint move/outcome pretraining (2026-11-06)
+
+Joint move/outcome pretraining is worth keeping as the working recipe for boosted models, including the pending64/256 wide comparison. The supervised evidence above supports a useful outcome signal with a small move-accuracy tradeoff. Subsequent medium-model PPO results are recorded in RL_EXPERIMENT_HISTORY.md stage60: the100-game frozen-opponent score rose from36% before PPO to59.5% at latest400 and69.5% at selected best320. The prior move-only boosted run scored53.5%/63.5% for latest/best; last50 fresh critic EV/RMSE were0.06802/0.78268 for joint versus0.00497/0.82971 for move-only. This supports retaining the recipe provisionally, not a causal claim that value-head initialization alone helped: joint training also changed encoder/policy, trajectories differ, and only one training seed and100-game benchmarks are available. Critic calibration and large clipped gradients remain unresolved.
+
+The user prefers to keep the existing full latest2200/residual best1200 frozen opponent mixture while the wide boosted model finishes supervised pretraining. A recommended next continuation is400 further medium outcome PPO updates from latest400 to800, preserving the same optimizer state, hyperparameters and exact50/50 opponent balance. Do not introduce boosted checkpoints as opponents or begin PSRO for that comparison. This entry records the recommendation and preference only; no continuation was launched by this documentation change.

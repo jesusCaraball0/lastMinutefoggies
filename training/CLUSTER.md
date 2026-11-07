@@ -1,3 +1,73 @@
+# Boosted CNN: full-data, 50-epoch pretraining
+
+Submit `sbatch training/boosted_cnn.sbatch` from `~/fow` after creating `logs/`.
+This uses every historical game in the same seeded90/10 game-level split;
+there are no pilot data limits. The new variant is `boosted_cnn`, with the
+medium residual backbone (32 channels,128 features,3 residual blocks,BN,
+dropout0.1). Its1819 input planes encode20 own-turn action/observation records,
+last-seen contents, observation age/visibility and known own castling rights.
+It has1,370,625 parameters. Inputs use only the player's available information.
+
+The50-epoch recipe matches `residual_cnn.sbatch`: AdamW betas(0.9,0.99),
+eps1e-8, decay0.01, batch128, clip5, default framework initialization;
+warmup5820 updates LR1e-4→1e-3, then cosine to1e-5 over all50 epochs.
+Best checkpoint maximizes legal top1 accuracy on8192 fixed validation moves;
+raw validation uses the entire held-out split. The existing JSON diagnostics,
+loss/LR/gradient plots and final per-layer histograms are retained.
+
+A disk-backed cache at `out/cache/boosted-v1/` stores203 bytes per move plus
+six index/target bytes;20-turn features are assembled only per batch. Expect
+roughly1.2GiB of disk cache for approximately6million positions, rather than
+keeping all float history tensors in RAM. First-run preprocessing appears as
+`Encode boosted replays` in the `.err` log. Cache reuse is keyed by schema,
+ordered source paths, file sizes and modification times; interrupted encoding
+is rebuilt safely. It uses no new pip packages beyond the existing environment.
+
+The job activates `.venv-cnn` itself and checks CUDA. Allocation remains one
+GPU, four CPUs,32GiB RAM and six hours. The wider input costs more compute;
+50 epochs fitting in six hours is not guaranteed. Resume preserves optimizer,
+LR schedule, input definition, split, metric history and best selection.
+
+On your Mac, sync code (the existing remote dataset and results are preserved):
+
+```bash
+cd /Users/jesuscaraball0/code/school_code/67980/fow
+rsync -av --progress --prune-empty-dirs \
+  --exclude='.git/' --exclude='.venv*/' --exclude='__pycache__/' \
+  --exclude='game_data/' --exclude='out/' --exclude='logs/' --exclude='work/' \
+  --exclude='evaluation_results/' --exclude='build/' \
+  --include='*/' --include='*.py' --include='*.sh' --include='*.sbatch' \
+  --include='*.txt' --include='*.toml' --include='*.md' --exclude='*' \
+  ./ jesusca@orcd-login.mit.edu:~/fow/
+ssh jesusca@orcd-login.mit.edu
+```
+
+On the cluster:
+
+```bash
+cd ~/fow
+mkdir -p logs
+boosted_job_id=$(sbatch --parsable training/boosted_cnn.sbatch)
+echo "Submitted job: $boosted_job_id"
+tail -F "logs/boosted-cnn-${boosted_job_id}.out" "logs/boosted-cnn-${boosted_job_id}.err"
+```
+
+`Ctrl-C` stops following logs without cancelling the Slurm job. Results are
+`out/experiments/boosted-cnn-JOBID/`: `best_policy.pt`, `last_policy.pt`,
+`final_policy.pt`, `metrics.json`, split, plots and histograms. To resume after
+a wall-time limit, replace OLD_JOB_ID with that original job number:
+
+```bash
+boosted_job_id=$(sbatch --parsable training/boosted_cnn.sbatch \
+  --resume out/experiments/boosted-cnn-OLD_JOB_ID/last_policy.pt)
+tail -F "logs/boosted-cnn-${boosted_job_id}.out" "logs/boosted-cnn-${boosted_job_id}.err"
+```
+
+Resume continues in the original result directory, while the new allocation
+has its own logs. If the job expires during initial feature caching before
+any epoch checkpoint exists, submit a fresh job; its cache is rebuilt/reused.
+No local pretraining, PPO continuation or PSRO process is launched by setup.
+
 Experimental findings are maintained in [EXPERIMENT_HISTORY.md](../EXPERIMENT_HISTORY.md). This document covers cluster operations.
 
 # Medium residual CNN: full-data, 50-epoch run
@@ -175,3 +245,102 @@ scp -r jesusca@orcd-login.mit.edu:~/fow/out/cluster/residual-medium-JOBID \
 ```
 
 New submissions after syncing the updated scripts write directly under `~/fow/out/experiments/`.
+
+## Boosted outcome CNN: joint move/outcome pretraining
+
+This is a new model,trained from scratch with the same medium residual architecture,
+1819 boosted input planes,50epochs and previous hyperparameters. Both policy and
+outcome losses train the encoder. Objective: move CE +0.5*outcome MSE; own-side
+terminal targets win+1,loss−1,draw+0.1,undiscounted. Keep the exact split from
+boosted-cnn-28018186; no new data or hidden-state input. Best remains selected by
+legal move accuracy. Original boosted and all RL weights remain separate.
+
+On the Mac,from the fow repository:
+
+```bash
+rsync -av --progress --exclude='__pycache__/' --exclude='*.pt' --exclude='*.onnx' \
+  training rl starters test_boosted_outcome.py \
+  jesusca@orcd-login.mit.edu:~/fow/
+ssh jesusca@orcd-login.mit.edu
+```
+
+Then on the cluster:
+
+```bash
+cd ~/fow
+mkdir -p logs out/experiments
+test -f out/experiments/boosted-cnn-28018186/data_split.json
+outcome_job_id=$(sbatch --parsable training/boosted_outcome_cnn.sbatch)
+outcome_job_id=${outcome_job_id%%;*}
+echo "$outcome_job_id"
+squeue -j "$outcome_job_id"
+tail -F "logs/boosted-outcome-cnn-${outcome_job_id}.out" \
+        "logs/boosted-outcome-cnn-${outcome_job_id}.err"
+```
+
+Uses the existing .venv-cnn/CUDA installation; no reinstall required. First launch
+builds outcome-label sidecars in the existing boosted cache; progress goes to stderr.
+The job activates its own venv. Closing SSH or stopping tail does not cancel sbatch.
+Results: `out/experiments/boosted-outcome-cnn-JOBID/`; all existing diagnostics plus
+`outcome_training.png`. A six-hour allocation is requested; completion in that
+allocation is not guaranteed. Resume from last completed epoch if needed:
+
+```bash
+sbatch training/boosted_outcome_cnn.sbatch \
+  --resume out/experiments/boosted-outcome-cnn-OLD_JOB_ID/last_policy.pt
+```
+
+Resume stays in the original result directory and preserves optimizer,LR schedule,
+data split and shuffle/RNG state. Pass --resume first. Logs use the new job ID.
+To pull the directory back,from the Mac:
+
+```bash
+scp -r jesusca@orcd-login.mit.edu:~/fow/out/experiments/boosted-outcome-cnn-JOBID \
+  /Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/
+```
+
+## Wide boosted outcome CNN
+
+The64-channel/256-hidden variant uses the same joint loss and50-epoch recipe as
+the32/128 outcome model. Parameters increase1.37M→3.37M. Same data split and
+seed,from scratch;it may need multiple6-hour allocations. No completion-time
+claim or automatic resubmission is provided. Medium and wide can be submitted
+as separate jobs;GPU availability determines scheduling.
+
+On the Mac:
+
+```bash
+cd /Users/jesuscaraball0/code/school_code/67980/fow
+rsync -av --progress --exclude='__pycache__/' --exclude='*.pt' --exclude='*.onnx' \
+  training rl starters test_boosted_outcome.py \
+  jesusca@orcd-login.mit.edu:~/fow/
+ssh jesusca@orcd-login.mit.edu
+```
+
+On the cluster:
+
+```bash
+cd ~/fow
+mkdir -p logs out/experiments
+wide_job_id=$(sbatch --parsable training/boosted_outcome_wide_cnn.sbatch)
+wide_job_id=${wide_job_id%%;*}
+echo "Wide job: $wide_job_id"
+squeue -j "$wide_job_id"
+tail -F "logs/boosted-outcome-wide-cnn-${wide_job_id}.out" \
+        "logs/boosted-outcome-wide-cnn-${wide_job_id}.err"
+```
+
+If the allocation expires,replaceJOBID with the original job ID:
+
+```bash
+sbatch training/boosted_outcome_wide_cnn.sbatch \
+  --resume out/experiments/boosted-outcome-wide-cnn-JOBID/last_policy.pt
+```
+
+Resume keeps the original results directory,total50-epoch LR schedule and optimizer/
+shuffle/RNG state. New allocation logs use the new job ID. Pull from the Mac:
+
+```bash
+scp -r jesusca@orcd-login.mit.edu:~/fow/out/experiments/boosted-outcome-wide-cnn-JOBID \
+  /Users/jesuscaraball0/code/school_code/67980/fow/out/experiments/
+```

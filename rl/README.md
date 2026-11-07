@@ -387,3 +387,15 @@ improves win rate.
 - [Huang et al., The 37 Implementation Details of PPO](https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/).
 
 An explicit `--gae-lambda 1` may be supplied when resuming (including paired training). Omit it to retain the saved lambda. The change preserves model/optimizer/RNG state and is recorded with its update boundary in `training_log.recipe_changes`; new update metrics record gamma and lambda. Other recipe changes remain rejected on resume. With complete games, lambda1 makes value targets equal discounted terminal returns.
+
+History CNNs use `model_config.history_frames` (default1 preserves old models and canonical variant IDs). The shared history buffer updates on every own fog observation received by the game protocol, newest frame first, with unknown padding at game start. Imitation replay examples, probes, in-process agents, PPO recorded tokens, and standalone exports share this ordering. `training/train.py --history-frames 4 --split-manifest PATH` trains on four stacked views using the existing trainer and diagnostics. A separate history-prefixed canonical RL directory prevents overwriting older architectures.
+
+The reproducible local pilot pipeline is `work/run_history_cnn_experiment.py`: current-view imitation control and history imitation on the same split, frozen-opponent PPO for the history model, then multi-seed cross-play. Status/recipe: `out/experiments/history4-cnn-imitation-then-ppo-pilot/pipeline.json`; operational restart reruns that script and resumes completed epoch/update boundaries. Experimental findings belong in the root RL report.
+
+`boosted_cnn` uses `model_config.boosted=true`, a fixed boosted_v1 feature schema
+(20 own-turn observation/action records plus last-seen/age,visibility and castling).
+Shared inference/rollouts/probes/export use identical packed tokens and schema.
+It is a feedforward learner, distinct from raw `history_frames` stacking; those
+input modes cannot be combined. Pretrain with `training/boosted_cnn.sbatch`;
+future PPO auto-uses a separate boosted-cnn canonical variant. Full pretraining
+setup/recipe is in root EXPERIMENT_HISTORY.md, stage49, and training/CLUSTER.md.
